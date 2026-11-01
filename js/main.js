@@ -36,21 +36,33 @@
     products: [
       ["Jordan 1 Low Travis Scott Velvet Brown", "tenis", "LIMITED", "travis-velvet"],
       ["Hoodie Valley", "moletons", "LOTE 01", "hoodie-valley"],
+      ["Jordan 4 Black Cat", "tenis", "RARO", "jordan4-blackcat"],
+      ["Calça Jeans Chrome Hearts", "calcas", "RARO", "jeans-chrome-hearts"],
+      ["New Balance 9060", "tenis", "NEW", "nb-9060"],
       ["Jaqueta Varsity Supreme", "jaquetas", "RARO", "varsity-supreme"],
-      ["T-shirt Valley", "camisetas", "NEW", "tshirt-valley"],
       ["Jordan 1 Low Travis Scott Pink", "tenis", "NEW", "travis-pink"],
-      ["Hoodie Supreme Box Logo", "moletons", null, "hoodie-supreme"],
+      ["Hoodie Denim Tears", "moletons", "NEW", "hoodie-denim-tears"],
+      ["Balenciaga Track", "tenis", "LIMITED", "balenciaga-track"],
+      ["T-shirt Valley", "camisetas", null, "tshirt-valley"],
+      ["Golden Goose Super-Star", "tenis", null, "golden-goose"],
+      ["Manga Longa Chrome Hearts", "camisetas", "LOTE 01", "longsleeve-chrome-hearts"],
+      ["Nike Air Max 95", "tenis", "NEW", "airmax95"],
+      ["T-shirt Balenciaga", "camisetas", null, "tshirt-balenciaga"],
       ["Jordan 1 Low Travis Scott Mocha", "tenis", "RARO", "travis-mocha"],
-      ["Zip Hoodie Enfants Riches Déprimés", "moletons", null, "zip-erd"],
+      ["Calça Jeans Denim Tears", "calcas", "LIMITED", "jeans-denim-tears"],
       ["Jordan 4 Levi's", "tenis", "LOTE 01", "jordan4-levis"],
-      ["Hoodie Enfants Riches Déprimés", "moletons", null, "hoodie-erd"],
-      ["On x Loewe Cloudtilt", "tenis", "NEW", "on-loewe"],
-      ["On Cloudtilt", "tenis", null, "on-cloud"]
+      ["Hoodie Supreme Box Logo", "moletons", null, "hoodie-supreme"],
+      ["On x Loewe Cloudtilt", "tenis", null, "on-loewe"],
+      ["T-shirt Amiri", "camisetas", "NEW", "tshirt-amiri"],
+      ["On Cloudtilt", "tenis", null, "on-cloud"],
+      ["Zip Hoodie Enfants Riches Déprimés", "moletons", null, "zip-erd"],
+      ["T-shirt Balenciaga BB", "camisetas", null, "tshirt-balenciaga-bb"],
+      ["Hoodie Enfants Riches Déprimés", "moletons", null, "hoodie-erd"]
     ].map(([nome, categoria, selo, f]) => ({ nome, categoria, selo, imagem_url: `img/p/${f}-sm.webp` })),
     lookbook: []
   };
   const S = JSON.parse(JSON.stringify(DEFAULTS));
-  const CAT = { tenis: "Tênis", moletons: "Moletom", camisetas: "Camiseta", jaquetas: "Jaqueta", acessorios: "Acessório" };
+  const CAT = { tenis: "Tênis", moletons: "Moletom", camisetas: "Camiseta", jaquetas: "Jaqueta", calcas: "Calça", acessorios: "Acessório" };
 
   /* ---------------- Rastreamento ---------------- */
   const T = (() => {

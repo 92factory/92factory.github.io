@@ -10,7 +10,7 @@
   const fmt = (n) => Number(n || 0).toLocaleString("pt-BR");
   const pct = (a, b) => (b ? ((a / b) * 100).toFixed(1).replace(".", ",") + "%" : "0%");
   const dtf = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
-  const CATS = { tenis: "Tênis", moletons: "Moletons", camisetas: "Camisetas", jaquetas: "Jaquetas", acessorios: "Acessórios" };
+  const CATS = { tenis: "Tênis", moletons: "Moletons", camisetas: "Camisetas", jaquetas: "Jaquetas", calcas: "Calças", acessorios: "Acessórios" };
   const STATUS = { novo: "Novo", contato: "Em contato", orcamento: "Orçamento enviado", fechado: "Fechado", perdido: "Perdido" };
   const ICON = {
     wa: '<svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-13.4 7.8L3 21l1.3-4.4A9 9 0 1 1 21 12z"/></svg>',
