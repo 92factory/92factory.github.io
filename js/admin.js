@@ -138,6 +138,7 @@
       </div>
       <div class="row row--3">
         <div class="panel"><h3>Produtos mais clicados</h3>${bars(s.top_products)}</div>
+        <div class="panel"><h3>Cliques nos catálogos</h3>${bars((s.catalogs || []).map((x) => ({ k: { roupas: "Catálogo de roupas", sneakers: "Catálogo de sneakers" }[x.k] || x.k, n: x.n })))}</div>
         <div class="panel"><h3>Cliques no WhatsApp por botão</h3>${bars(s.wa_buttons.map((x) => ({ k: WA_LABEL[x.k] || x.k, n: x.n })))}</div>
         <div class="panel"><h3>Dispositivos <small>visitantes</small></h3>${bars(s.devices.map((x) => ({ k: { mobile: "Celular", desktop: "Computador", tablet: "Tablet" }[x.k] || x.k, n: x.n })))}</div>
       </div>`;
@@ -410,7 +411,7 @@
   /* ---------------- Configurações ---------------- */
   async function vConfig(v) {
     const s = await loadSettings();
-    const w = s.whatsapp || {}, g = s.geral || {};
+    const w = s.whatsapp || {}, g = s.geral || {}, cat = s.catalogos || { roupas: "https://windvane168.x.yupoo.com/", sneakers: "https://yolo66.x.yupoo.com/" };
     v.innerHTML = `
       <div class="panel">
         <h3>WhatsApp</h3>
@@ -419,6 +420,13 @@
           <label class="fl"><span>Mensagem padrão (botões gerais)</span><textarea id="wm" rows="3">${esc(w.msg_padrao)}</textarea></label>
           <label class="fl"><span>Mensagem dos produtos</span><textarea id="wp" rows="3">${esc(w.msg_produto)}</textarea><small>Use {produto} onde deve entrar o nome da peça.</small></label>
           <div><p class="muted" style="margin:0 0 8px;font-size:12px">Pré-visualização</p><div class="preview-wa"><div id="wprev"></div></div></div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:14px">
+        <h3>Catálogos</h3>
+        <div class="form-grid">
+          <label class="fl"><span>Catálogo de roupas (link)</span><input id="cr" value="${esc(cat.roupas)}"></label>
+          <label class="fl"><span>Catálogo de sneakers (link)</span><input id="cs" value="${esc(cat.sneakers)}"></label>
         </div>
       </div>
       <div class="panel" style="margin-top:14px">
@@ -446,7 +454,7 @@
       const numero = $("#wn").value.replace(/\D/g, "");
       if (numero.length < 12) return toast("Número inválido. Inclua 55 + DDD + número.", true);
       try {
-        await saveSettings({ whatsapp: { numero, msg_padrao: $("#wm").value.trim(), msg_produto: $("#wp").value.trim() }, geral: Object.assign({}, g, { instagram: $("#gi").value.trim(), tiktok: $("#gtk").value.trim() }) });
+        await saveSettings({ whatsapp: { numero, msg_padrao: $("#wm").value.trim(), msg_produto: $("#wp").value.trim() }, geral: Object.assign({}, g, { instagram: $("#gi").value.trim(), tiktok: $("#gtk").value.trim() }), catalogos: { roupas: $("#cr").value.trim(), sneakers: $("#cs").value.trim() } });
         toast("Configurações salvas");
       } catch (err) { toast(err.message, true); }
     };

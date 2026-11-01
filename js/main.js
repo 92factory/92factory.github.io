@@ -19,6 +19,7 @@
     },
     hero: { kicker: "BRASIL * RJ — 2026®", titulo: "Você escolhe. A gente traz.", subtitulo: "A 92 factory compra, importa e entrega na sua porta as peças que não se acha fácil.", cta1: "Quero importar", cta2: "Como funciona" },
     geral: { prazo: "35 a 40 dias", instagram: "https://instagram.com/", tiktok: "" },
+    catalogos: { roupas: "https://windvane168.x.yupoo.com/", sneakers: "https://yolo66.x.yupoo.com/" },
     stats: [
       { n: 500, sufixo: "+", label: "Pedidos entregues" },
       { n: 35, sufixo: "–40", label: "Dias de prazo médio" },
@@ -215,6 +216,17 @@
     $("#heroCta2").textContent = h.cta2 || DEFAULTS.hero.cta2;
     $$(".js-prazo").forEach((e) => (e.textContent = S.geral.prazo || DEFAULTS.geral.prazo));
     if (S.geral.instagram) $("#igLink").href = S.geral.instagram;
+    const c = S.catalogos || DEFAULTS.catalogos;
+    if (c.roupas) $("#catRoupas").href = c.roupas;
+    if (c.sneakers) $("#catSneakers").href = c.sneakers;
+  }
+  function catalogs() {
+    $$(".cat").forEach((a) => a.addEventListener("click", () => T.track("catalog_click", a.dataset.cat)));
+    if (isTouch) return;
+    $$(".cat").forEach((a) => {
+      a.addEventListener("mousemove", (e) => { const r = a.getBoundingClientRect(); a.style.transform = `translateY(-8px) perspective(1200px) rotateY(${((e.clientX - r.left) / r.width - 0.5) * 6}deg) rotateX(${-((e.clientY - r.top) / r.height - 0.5) * 6}deg)`; });
+      a.addEventListener("mouseleave", () => (a.style.transform = ""));
+    });
   }
 
   /* ---------------- Sobre: palavras acendem com a rolagem ---------------- */
@@ -418,7 +430,7 @@
   function renderAll() { renderHero(); renderRail(); renderLook(); renderStats(); renderFaq(); bindWA(); observe(); magnetic(); }
 
   /* ---------------- Init ---------------- */
-  preloader(); header(); cursor(); hero(); about(); how(); chat(); rail(); leadForm();
+  preloader(); header(); cursor(); hero(); about(); how(); catalogs(); chat(); rail(); leadForm();
   renderAll(); runScrollFx();
   T.track("pageview");
   loadRemote().then((ok) => { if (ok) renderAll(); });
