@@ -1,0 +1,31 @@
+92 factory — Site + Painel administrador
+==========================================
+
+ABRIR NO COMPUTADOR
+- Site: dê dois cliques em index.html
+- Painel: dê dois cliques em admin.html
+
+PRIMEIRO ACESSO AO PAINEL
+1. Abra admin.html e clique em "Primeiro acesso? Criar conta de administrador".
+2. Use um destes e-mails (são os únicos autorizados):
+   achadinhosdachina4@gmail.com  ou  rodrigobastos03@gmail.com
+3. Crie uma senha (mínimo 8 caracteres).
+4. Confirme pelo link que chega no e-mail (se a página do link não abrir, tudo bem:
+   a confirmação já foi feita). Volte ao admin.html e entre.
+
+PUBLICAR NA INTERNET (grátis)
+- Acesse https://app.netlify.com/drop e arraste esta pasta inteira (SITE).
+- Em segundos você recebe um link. Depois dá pra ligar um domínio próprio
+  (ex.: 92factory.com.br) nas configurações do Netlify.
+- Também funciona na Vercel ou em qualquer hospedagem de site estático.
+
+O QUE FICA ONDE
+- Leads, visitas, cliques, produtos e textos: banco de dados Supabase
+  (projeto "92-factory"). Tudo é editado pelo painel.
+- img/p/       fotos dos produtos com fundo removido
+- img/         logos, favicon e imagem de compartilhamento
+- css/ e js/   visual e funcionamento (não precisa mexer)
+
+LINKS COM RASTREIO
+- No painel > Configurações há links prontos para bio do Instagram, TikTok
+  e anúncios. Use-os para ver de onde vêm as visitas no Dashboard.

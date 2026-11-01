@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>92 factory — Você escolhe. A gente traz.</title>
+  <meta name="description" content="A 92 factory compra, importa e entrega na sua porta as peças que não se acha fácil. Orçamento pelo WhatsApp e fotos de QC antes do envio.">
+  <meta name="theme-color" content="#F3F1EE">
+  <meta property="og:title" content="92 factory — Você escolhe. A gente traz.">
+  <meta property="og:description" content="Compra, importação e entrega na sua porta. Se é fácil, não é 92.">
+  <meta property="og:image" content="img/og.jpg">
+  <meta property="og:type" content="website">
+  <link rel="icon" type="image/png" href="img/favicon.png">
+  <link rel="apple-touch-icon" href="img/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300..800;1,14..32,300..800&display=swap" rel="stylesheet">
+  <link rel="preload" as="image" href="img/p/hoodie-valley.webp">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="is-loading">
+
+  <!-- PRELOADER -->
+  <div class="preloader" id="preloader" aria-hidden="true">
+    <div class="pl-logo"><span class="pl-9">9</span><span class="pl-2">2</span></div>
+    <div class="pl-word">factory</div>
+    <div class="pl-bar"><i id="plBar"></i></div>
+  </div>
+
+  <div class="cursor" id="cursor" aria-hidden="true"></div>
+
+  <!-- HEADER (vidro) -->
+  <header class="header" id="header">
+    <a href="#top" class="header__logo" aria-label="92 factory — início"><img src="img/logo-official.png" alt="92 factory"></a>
+    <nav class="header__nav" aria-label="Principal">
+      <a href="#sobre">A 92</a>
+      <a href="#como-funciona">Como funciona</a>
+      <a href="#manda-foto">Manda a foto</a>
+      <a href="#pecas">Peças</a>
+      <a href="#faq">Dúvidas</a>
+    </nav>
+    <a href="#" class="btn btn--dark btn--sm header__cta" data-wa="header">Pedir orçamento</a>
+    <button class="burger" id="burger" aria-label="Abrir menu" aria-expanded="false"><span></span><span></span></button>
+  </header>
+
+  <div class="mmenu" id="mmenu" aria-hidden="true">
+    <nav>
+      <a href="#sobre">A 92</a>
+      <a href="#como-funciona">Como funciona</a>
+      <a href="#manda-foto">Manda a foto</a>
+      <a href="#pecas">Peças</a>
+      <a href="#lista">Lista VIP</a>
+      <a href="#faq">Dúvidas</a>
+    </nav>
+    <a href="#" class="btn btn--orange" data-wa="menu">Pedir orçamento no WhatsApp</a>
+    <p class="mmenu__tag">BRASIL * RJ</p>
+  </div>
+
+  <main id="top">
+
+    <!-- ============ HERO / BANNER (pôster) ============ -->
+    <section class="hero" id="hero">
+      <div class="hero__frame" id="heroFrame">
+        <div class="hero__bg"></div>
+        <div class="grain"></div>
+
+        <!-- linha de texto espaçada no topo (ref. "everything around is an art project") -->
+        <div class="hero__row">
+          <span>Se é fácil</span><span>não é 92</span><span class="hide-sm">Brasil * RJ</span><span class="hide-sm">2026®</span>
+        </div>
+
+        <!-- tipografia gigante atrás da peça (ref. pôster) -->
+        <div class="hero__giant" data-depth="0.15" aria-hidden="true">92</div>
+
+        <!-- palavras laterais (ref. "street / wear") -->
+        <span class="hero__side hero__side--l" data-depth="0.3" aria-hidden="true">street</span>
+        <span class="hero__side hero__side--r" data-depth="0.3" aria-hidden="true">wear</span>
+
+        <!-- composição de peças -->
+        <div class="hero__stage">
+          <img src="img/p/travis-pink.webp" alt="" class="hero__item hero__item--back" data-depth="0.6" aria-hidden="true">
+          <img src="img/p/hoodie-valley.webp" alt="Hoodie Valley" class="hero__item hero__item--main" data-depth="0.35" id="heroMain">
+          <img src="img/p/travis-velvet.webp" alt="" class="hero__item hero__item--front" data-depth="1" aria-hidden="true">
+        </div>
+
+        <!-- conteúdo -->
+        <div class="hero__content">
+          <p class="hero__kicker rv" id="heroKicker">BRASIL * RJ — 2026®</p>
+          <h1 class="hero__title rv" id="heroTitle">Você escolhe.<br>A gente traz.</h1>
+          <p class="hero__sub rv" id="heroSub">A 92 factory compra, importa e entrega na sua porta as peças que não se acha fácil.</p>
+          <div class="hero__ctas rv">
+            <a href="#" class="btn btn--dark magnetic" data-wa="hero" id="heroCta1"><span>Quero importar</span><svg class="ic" viewBox="0 0 24 24"><path d="M7 17 17 7M8 7h9v9"/></svg></a>
+            <a href="#como-funciona" class="btn btn--glass magnetic" id="heroCta2">Como funciona</a>
+          </div>
+        </div>
+
+        <!-- selo de vidro (ref. adesivo do pôster) -->
+        <div class="hero__badge glass rv">
+          <div class="hero__badgeImg"><img src="img/p/travis-velvet-sm.webp" alt=""></div>
+          <div>
+            <b>Fotos de QC</b>
+            <span>Você aprova a peça antes do envio</span>
+          </div>
+        </div>
+
+        <div class="hero__meta">
+          <div class="barcode" aria-hidden="true"></div>
+          <span>N° 092 — LOTE 01</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ O QUE É A 92 ============ -->
+    <section class="about" id="sobre">
+      <p class="kicker rv">A 92 factory</p>
+      <p class="about__text" id="aboutText">A 92 factory é um serviço de compra e importação. Você escolhe a peça no nosso catálogo ou manda a foto de qualquer uma. A gente compra, importa e entrega na sua casa, com fotos de QC antes do envio.</p>
+      <div class="about__chips">
+        <div class="chip glass rv"><b class="js-prazo">35 a 40 dias</b><span>Prazo médio até a sua porta</span></div>
+        <div class="chip glass rv"><b>100%</b><span>Dos pedidos com fotos de QC</span></div>
+        <div class="chip glass rv"><b>Todo o Brasil</b><span>Entrega no seu endereço</span></div>
+      </div>
+    </section>
+
+    <!-- ============ COMO FUNCIONA ============ -->
+    <section class="how" id="como-funciona">
+      <div class="how__aside">
+        <div class="how__sticky">
+          <p class="kicker">Como funciona</p>
+          <h2 class="h2">Do pedido à sua porta em <span class="o">5 passos.</span></h2>
+          <div class="how__count"><span id="howN">01</span><small>/05</small></div>
+          <div class="how__bar"><i id="howBar"></i></div>
+          <a href="#" class="btn btn--dark magnetic hide-sm" data-wa="como-funciona"><span>Começar agora</span><svg class="ic" viewBox="0 0 24 24"><path d="M7 17 17 7M8 7h9v9"/></svg></a>
+        </div>
+      </div>
+      <ol class="how__list" id="howList">
+        <li class="step glass">
+          <div class="step__ic"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></div>
+          <span class="step__n">01</span>
+          <h3>Escolha a peça</h3>
+          <p>Pelo nosso catálogo ou mandando a foto de qualquer peça que você viu por aí.</p>
+        </li>
+        <li class="step glass">
+          <div class="step__ic"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-13.4 7.8L3 21l1.3-4.4A9 9 0 1 1 21 12z"/></svg></div>
+          <span class="step__n">02</span>
+          <h3>Receba o orçamento</h3>
+          <p>A gente te passa um orçamento fechado no WhatsApp, tudo explicado antes de pagar.</p>
+        </li>
+        <li class="step glass">
+          <div class="step__ic"><svg viewBox="0 0 24 24"><path d="M6 7h12l-1 13H7z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg></div>
+          <span class="step__n">03</span>
+          <h3>A gente compra</h3>
+          <p>Compramos a peça pra você direto com os fornecedores.</p>
+        </li>
+        <li class="step glass">
+          <div class="step__ic"><svg viewBox="0 0 24 24"><path d="M3 7h3l2-3h8l2 3h3v13H3z"/><circle cx="12" cy="13" r="4"/></svg></div>
+          <span class="step__n">04</span>
+          <h3>Fotos de QC</h3>
+          <p>Antes de enviar, você recebe fotos reais da sua peça para aprovar.</p>
+        </li>
+        <li class="step glass">
+          <div class="step__ic"><svg viewBox="0 0 24 24"><path d="M3 9.5 12 3l9 6.5V21H3z"/><path d="M9 21v-7h6v7"/></svg></div>
+          <span class="step__n">05</span>
+          <h3>Na sua porta</h3>
+          <p>Entrega em todo o Brasil, com prazo médio de <span class="js-prazo">35 a 40 dias</span>.</p>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ============ NÃO ACHOU? MANDA A FOTO ============ -->
+    <section class="photo" id="manda-foto">
+      <div class="photo__glow"></div>
+      <div class="photo__text">
+        <p class="kicker rv">Pedido por foto</p>
+        <h2 class="h2 rv">Não achou?<br><span class="o">Manda a foto.</span></h2>
+        <p class="lead rv">Viu uma peça no Instagram, na rua ou num clipe? Manda a foto no WhatsApp que a gente encontra, te passa o orçamento e traz pra você.</p>
+        <a href="#" class="btn btn--wa btn--lg magnetic rv" data-wa="manda-foto" id="photoBtn">
+          <svg class="ic ic--fill" viewBox="0 0 32 32"><path d="M16 3C8.8 3 3 8.7 3 15.8c0 2.5.7 4.9 2 7L3 29l6.4-2c2 1.1 4.3 1.7 6.6 1.7 7.2 0 13-5.7 13-12.8S23.2 3 16 3zm6 15.5c-.3-.2-1.9-1-2.2-1-.3-.1-.5-.2-.7.2l-1 1.2c-.2.2-.4.2-.7.1-.3-.2-1.4-.5-2.6-1.6-1-.9-1.6-1.9-1.8-2.2-.2-.3 0-.5.1-.7l.5-.6.3-.5c.1-.2 0-.4 0-.6l-1-2.4c-.3-.6-.5-.5-.7-.5h-.6c-.2 0-.6.1-.9.4-.3.3-1.2 1.1-1.2 2.7s1.2 3.2 1.4 3.4c.2.2 2.4 3.6 5.8 5 .8.3 1.4.5 1.9.7.8.2 1.5.2 2.1.1.6-.1 1.9-.8 2.2-1.5.3-.7.3-1.4.2-1.5-.1-.2-.3-.3-.6-.4z"/></svg>
+          <span>Enviar foto no WhatsApp</span>
+        </a>
+        <ul class="photo__list rv">
+          <li>Resposta rápida</li><li>Orçamento sem compromisso</li><li>Qualquer marca</li>
+        </ul>
+      </div>
+      <div class="phone-wrap">
+        <div class="phone" id="phone">
+          <div class="phone__notch"></div>
+          <div class="phone__top">
+            <div class="phone__av"><img src="img/logo-official.png" alt=""></div>
+            <div><b>92 factory</b><span id="phStatus">online</span></div>
+          </div>
+          <div class="phone__chat" id="chat"></div>
+          <div class="phone__input"><span>Mensagem</span><i></i></div>
+        </div>
+        <div class="float-card glass" id="floatCard">
+          <span class="dot"></span> Peça encontrada
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PEÇAS (única seção de produtos) ============ -->
+    <section class="pieces" id="pecas">
+      <div class="pieces__head">
+        <div>
+          <p class="kicker rv">Peças em alta</p>
+          <h2 class="h2 rv">Algumas peças que <span class="o">a gente traz.</span></h2>
+        </div>
+        <p class="lead rv">É só uma amostra: dá pra pedir qualquer peça, de qualquer marca.</p>
+      </div>
+      <div class="rail" id="rail"><div class="rail__track" id="railTrack"></div></div>
+    </section>
+
+    <!-- LOOKBOOK (aparece só quando houver fotos no painel) -->
+    <section class="look" id="lookbook" hidden>
+      <div class="pieces__head"><div><p class="kicker">Lookbook</p><h2 class="h2">Quem já <span class="o">veste 92.</span></h2></div></div>
+      <div class="look__grid" id="lookGrid"></div>
+    </section>
+
+    <!-- ============ DIFERENCIAIS ============ -->
+    <section class="perks">
+      <div class="perks__grid">
+        <div class="perk rv"><svg viewBox="0 0 24 24"><path d="M3 7h3l2-3h8l2 3h3v13H3z"/><circle cx="12" cy="13" r="4"/></svg><h3>QC antes do envio</h3><p>Fotos reais da sua peça para você aprovar.</p></div>
+        <div class="perk rv"><svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><h3>Compra segura</h3><p>Orçamento fechado antes de qualquer pagamento.</p></div>
+        <div class="perk rv"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-13.4 7.8L3 21l1.3-4.4A9 9 0 1 1 21 12z"/></svg><h3>Atendimento direto</h3><p>Você fala com a 92 do começo ao fim.</p></div>
+        <div class="perk rv"><svg viewBox="0 0 24 24"><path d="M3 9.5 12 3l9 6.5V21H3z"/><path d="M9 21v-7h6v7"/></svg><h3>Na sua casa</h3><p>Entrega em todo o Brasil.</p></div>
+      </div>
+      <div class="stats" id="stats"></div>
+    </section>
+
+    <!-- ============ LISTA VIP ============ -->
+    <section class="vip" id="lista">
+      <div class="vip__frame">
+        <div class="vip__bg"></div>
+        <div class="grain"></div>
+        <div class="vip__left">
+          <p class="kicker kicker--light rv">Lista VIP</p>
+          <h2 class="h2 h2--light rv">Entra pra lista da 92.</h2>
+          <p class="lead lead--light rv">Deixa seu contato e a gente te chama com os próximos lotes e peças raras antes de todo mundo.</p>
+          <ul class="vip__list rv"><li>Acesso antecipado aos lotes</li><li>Atendimento direto com a 92</li><li>Zero spam</li></ul>
+        </div>
+        <form class="form glass glass--light" id="leadForm" novalidate>
+          <div class="field"><input id="fNome" type="text" autocomplete="name" placeholder=" " maxlength="120"><label for="fNome">Seu nome *</label><small class="err">Digite seu nome</small></div>
+          <div class="field"><input id="fWhats" type="tel" inputmode="tel" autocomplete="tel" placeholder=" " maxlength="16"><label for="fWhats">WhatsApp com DDD *</label><small class="err">Digite um WhatsApp válido com DDD</small></div>
+          <div class="field"><input id="fEmail" type="email" autocomplete="email" placeholder=" " maxlength="160"><label for="fEmail">E-mail (opcional)</label><small class="err">E-mail inválido</small></div>
+          <div class="field"><textarea id="fInteresse" rows="2" placeholder=" " maxlength="1000"></textarea><label for="fInteresse">O que você procura? (opcional)</label></div>
+          <label class="check"><input type="checkbox" id="fConsent"><span class="check__box"></span><span>Aceito receber contato da 92 factory pelo WhatsApp e e-mail.</span></label>
+          <small class="err err--consent">Marque para continuar</small>
+          <button type="submit" class="btn btn--dark btn--block" id="leadBtn"><span>Quero ser chamado</span></button>
+          <p class="form__msg" id="formMsg" role="status"></p>
+          <div class="form__ok" id="formOk" aria-hidden="true">
+            <div class="form__okIcon"><svg viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg></div>
+            <h3>Você está na lista.</h3>
+            <p>Em breve a 92 te chama no WhatsApp.</p>
+            <a href="#" class="btn btn--dark btn--sm" data-wa="lead-sucesso">Falar agora no WhatsApp</a>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- ============ FAQ ============ -->
+    <section class="faq" id="faq">
+      <div class="faq__head">
+        <p class="kicker rv">Dúvidas</p>
+        <h2 class="h2 rv">Perguntas frequentes.</h2>
+        <p class="lead rv">Não achou sua resposta? <a href="#" data-wa="faq" class="link">Chama no WhatsApp</a>.</p>
+      </div>
+      <div class="faq__list" id="faqList"></div>
+    </section>
+  </main>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="footer">
+    <div class="footer__card glass">
+      <div class="footer__top">
+        <div>
+          <img src="img/logo-official.png" alt="92 factory" class="footer__logo">
+          <p class="footer__slogan">Se é fácil, não é <span class="o">92.</span></p>
+        </div>
+        <div class="footer__cols">
+          <div><h4>Site</h4><a href="#sobre">A 92</a><a href="#como-funciona">Como funciona</a><a href="#pecas">Peças</a><a href="#faq">Dúvidas</a></div>
+          <div><h4>Contato</h4><a href="#" data-wa="footer">WhatsApp</a><a href="#" id="igLink" target="_blank" rel="noopener">Instagram</a><a href="#lista">Lista VIP</a></div>
+        </div>
+      </div>
+      <div class="footer__bottom"><span>© 2026 92 factory®</span><span>BRASIL * RJ</span></div>
+    </div>
+  </footer>
+
+  <a href="#" class="wa-float" data-wa="flutuante" aria-label="Falar no WhatsApp">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M16 3C8.8 3 3 8.7 3 15.8c0 2.5.7 4.9 2 7L3 29l6.4-2c2 1.1 4.3 1.7 6.6 1.7 7.2 0 13-5.7 13-12.8S23.2 3 16 3zm0 23.4c-2.1 0-4.1-.6-5.9-1.7l-.4-.3-3.8 1.2 1.2-3.7-.3-.4a10.4 10.4 0 0 1-1.7-5.7C5.1 9.9 10 5.2 16 5.2s10.9 4.7 10.9 10.6S22 26.4 16 26.4zm6-7.9c-.3-.2-1.9-1-2.2-1-.3-.1-.5-.2-.7.2l-1 1.2c-.2.2-.4.2-.7.1-.3-.2-1.4-.5-2.6-1.6-1-.9-1.6-1.9-1.8-2.2-.2-.3 0-.5.1-.7l.5-.6.3-.5c.1-.2 0-.4 0-.6l-1-2.4c-.3-.6-.5-.5-.7-.5h-.6c-.2 0-.6.1-.9.4-.3.3-1.2 1.1-1.2 2.7s1.2 3.2 1.4 3.4c.2.2 2.4 3.6 5.8 5 .8.3 1.4.5 1.9.7.8.2 1.5.2 2.1.1.6-.1 1.9-.8 2.2-1.5.3-.7.3-1.4.2-1.5-.1-.2-.3-.3-.6-.4z"/></svg>
+  </a>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
