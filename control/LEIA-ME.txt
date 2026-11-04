@@ -1,0 +1,25 @@
+92 FACTORY CONTROL — sistema de gestão da loja
+================================================
+
+ACESSO ONLINE (computador e celular)
+  https://92factory.github.io/control/
+
+USO LOCAL NO COMPUTADOR
+  1. Descompacte esta pasta (ex.: Downloads\92 FACTORY\CONTROL).
+  2. Dê dois cliques em index.html (abre no Chrome ou Edge).
+  3. Entre com o mesmo e-mail e senha.
+  Os dados são os mesmos da versão online: o que você ou seu sócio
+  lançar em um lugar aparece no outro em tempo real.
+  Para ter uma cópia dos dados no computador: Ajustes > Baixar backup completo (Excel).
+
+INSTALAR COMO APP NO CELULAR
+  iPhone: abra o link no Safari > Compartilhar > Adicionar à Tela de Início.
+  Android: abra no Chrome > menu ⋮ > Instalar app.
+
+PRIMEIRO ACESSO
+  Os e-mails achadinhosdachina4@gmail.com e rodrigobastos03@gmail.com já são donos da 92 Factory.
+  Quem ainda não tem senha: toque em "Criar conta" e use um desses e-mails.
+
+ARQUIVOS
+  index.html  app.js  app.css  config.js  -> o sistema
+  manifest.webmanifest  sw.js  icon-*.png -> instalação como app
