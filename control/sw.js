@@ -1,6 +1,6 @@
 // 92 Factory Control — guarda o app no aparelho para abrir rápido (os dados vêm sempre do servidor).
-const V = "ctl-v1";
-const SHELL = ["./", "index.html", "app.css?v=1", "app.js?v=1", "config.js?v=1", "logo.png", "icon-192.png", "manifest.webmanifest"];
+const V = "ctl-v2";
+const SHELL = ["./", "index.html", "app.css?v=2", "app.js?v=2", "config.js?v=1", "logo.png", "icon-192.png", "manifest.webmanifest"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(V).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== V).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", (e) => {

@@ -43,6 +43,7 @@ const I = {
 };
 const ico = (k) => `<svg viewBox="0 0 24 24">${I[k] || ""}</svg>`;
 
+const who = (e) => String(e || "").endsWith("@92factory.local") ? String(e).split("@")[0] : String(e || "");
 const toast = (msg, err) => { const t = $("#toast"); t.textContent = msg; t.className = "toast" + (err ? " err" : ""); t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), err ? 5200 : 2600); };
 const fail = (e) => { console.error(e); toast(friendly(e), true); };
 const friendly = (e) => { const m = e?.message || String(e); if (/Failed to fetch|NetworkError/i.test(m)) return "Sem conexão com a internet. Tente de novo."; if (/row-level security|permission/i.test(m)) return "Sua conta não tem permissão para isso nesta empresa."; return m; };
@@ -92,14 +93,16 @@ const C = {
 /* ---------- auth ---------- */
 let authMode = "in";
 function showAuth() { $("#boot").hidden = true; $("#app").hidden = true; $("#auth").hidden = false; }
-$("#authToggle").onclick = () => { authMode = authMode === "in" ? "up" : "in"; $("#authBtn").textContent = authMode === "in" ? "Entrar" : "Criar conta"; $("#authToggle").textContent = authMode === "in" ? "Criar conta" : "Já tenho conta"; $("#authSub").textContent = authMode === "in" ? "Entre com o e-mail da sua conta." : "Use o e-mail que o dono da empresa cadastrou para você."; $("#authPass").autocomplete = authMode === "in" ? "current-password" : "new-password"; $("#authMsg").textContent = ""; };
+$("#authToggle").onclick = () => { authMode = authMode === "in" ? "up" : "in"; $("#authBtn").textContent = authMode === "in" ? "Entrar" : "Criar conta"; $("#authToggle").textContent = authMode === "in" ? "Criar conta" : "Já tenho conta"; $("#authUserLbl").textContent = authMode === "in" ? "Usuário ou e-mail" : "E-mail"; $("#authSub").textContent = authMode === "in" ? "Entre com seu usuário ou e-mail." : "Use o e-mail que o dono da empresa cadastrou para você."; $("#authPass").autocomplete = authMode === "in" ? "current-password" : "new-password"; $("#authMsg").textContent = ""; };
 $("#authForgot").onclick = async () => { const email = $("#authEmail").value.trim(); if (!email) { $("#authMsg").textContent = "Digite seu e-mail acima e toque em “Esqueci a senha” de novo."; return; } const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.href.split("#")[0] }); $("#authMsg").textContent = error ? friendly(error) : "Enviamos um link para redefinir a senha no seu e-mail."; };
 $("#authForm").onsubmit = async (e) => {
   e.preventDefault(); const btn = $("#authBtn"); btn.disabled = true; $("#authMsg").textContent = "";
-  const email = $("#authEmail").value.trim().toLowerCase(), password = $("#authPass").value;
+  const login = $("#authEmail").value.trim().toLowerCase(), password = $("#authPass").value;
+  const email = login.includes("@") ? login : login + "@92factory.local";
+  if (authMode === "up" && !login.includes("@")) { $("#authMsg").textContent = "Para criar conta, use um e-mail de verdade."; btn.disabled = false; return; }
   try {
     if (authMode === "up") { const { data, error } = await sb.auth.signUp({ email, password }); if (error) throw error; if (!data.session) { $("#authMsg").textContent = "Conta criada. Confirme pelo link enviado ao seu e-mail e depois entre."; btn.disabled = false; return; } }
-    else { const { error } = await sb.auth.signInWithPassword({ email, password }); if (error) throw error.message.includes("Invalid") ? new Error("E-mail ou senha incorretos.") : error; }
+    else { const { error } = await sb.auth.signInWithPassword({ email, password }); if (error) throw error.message.includes("Invalid") ? new Error("Usuário ou senha incorretos.") : error; }
   } catch (err) { $("#authMsg").textContent = friendly(err); }
   btn.disabled = false;
 };
@@ -119,7 +122,7 @@ async function start() {
     if (!S.companies.length) { $("#boot").hidden = true; $("#app").hidden = false; buildNav(); renderNoCompany(); return; }
     const saved = store.get("cid"); S.cid = S.companies.find((c) => c.id === saved) ? saved : S.companies[0].id;
     await loadCompany();
-    $("#boot").hidden = true; $("#app").hidden = false; $("#userEmail").textContent = S.user.email;
+    $("#boot").hidden = true; $("#app").hidden = false; $("#userEmail").textContent = who(S.user.email);
     buildNav(); route();
   } catch (e) { $("#boot").hidden = true; fail(e); showAuth(); }
 }
@@ -344,7 +347,7 @@ function pageStock() {
   ${active.map((p) => { const ms = S.moves.filter((m) => m.product_id === p.id); const e = ms.filter((m) => m.qty > 0 && m.type !== "cancelamento").reduce((a, m) => a + m.qty, 0); const v = -ms.filter((m) => m.type === "venda" || m.type === "cancelamento").reduce((a, m) => a + m.qty, 0); const o = -ms.filter((m) => m.qty < 0 && m.type !== "venda").reduce((a, m) => a + m.qty, 0); return `<tr><td><div class="cell-title">${esc(p.name)}</div><div class="cell-sub">${esc(p.sku || "")}</div></td><td class="r">${e}</td><td class="r">${v}</td><td class="r">${o}</td><td class="r">${stockBadge(p)}</td><td class="r"><button class="btn btn--ghost btn--sm" data-mv="${p.id}">Movimentar</button></td></tr>`; }).join("") || `<tr><td colspan="6"><div class="empty">Nenhum produto.</div></td></tr>`}
   </tbody></table></div></div>
   <div class="panel"><h2>Histórico <div class="chips">${[["", "Tudo"], ...Object.entries(MOVE_T).map(([k, v]) => [k, v[0]])].map(([k, l]) => `<button class="chip ${mFilter === k ? "on" : ""}" data-mf="${k}">${l}</button>`).join("")}</div></h2>
-  ${list.length ? `<div class="rows">${list.map((m) => { const p = S.products.find((x) => x.id === m.product_id); const sh = S.shipments.find((s) => s.id === m.shipment_id); const t = MOVE_T[m.type] || [m.type, ""]; return `<div class="row"><div><b>${esc(p?.name || "Produto removido")}</b><div class="cell-sub">${fdt(m.created_at)} · ${esc(m.created_by || "")}${sh ? " · " + esc(sh.name) : ""}${m.note ? " · " + esc(m.note) : ""}</div></div><span class="badge badge--${t[1]}">${t[0]}</span><div class="r" style="min-width:48px"><b class="${m.qty < 0 ? "neg" : "pos"}">${m.qty > 0 ? "+" : ""}${m.qty}</b></div>${m.sale_id ? "" : `<button class="icon-btn" data-delmv="${m.id}" title="Apagar">${ico("trash")}</button>`}</div>`; }).join("")}</div>` : `<div class="empty">Nada por aqui.</div>`}</div></div>`;
+  ${list.length ? `<div class="rows">${list.map((m) => { const p = S.products.find((x) => x.id === m.product_id); const sh = S.shipments.find((s) => s.id === m.shipment_id); const t = MOVE_T[m.type] || [m.type, ""]; return `<div class="row"><div><b>${esc(p?.name || "Produto removido")}</b><div class="cell-sub">${fdt(m.created_at)} · ${esc(who(m.created_by))}${sh ? " · " + esc(sh.name) : ""}${m.note ? " · " + esc(m.note) : ""}</div></div><span class="badge badge--${t[1]}">${t[0]}</span><div class="r" style="min-width:48px"><b class="${m.qty < 0 ? "neg" : "pos"}">${m.qty > 0 ? "+" : ""}${m.qty}</b></div>${m.sale_id ? "" : `<button class="icon-btn" data-delmv="${m.id}" title="Apagar">${ico("trash")}</button>`}</div>`; }).join("")}</div>` : `<div class="empty">Nada por aqui.</div>`}</div></div>`;
 }
 function moveForm(p) {
   openModal(`<div class="modal__head"><div><h2>Movimentar estoque</h2><p class="muted">Entrada de mercadoria, saída (brinde, perda, uso) ou ajuste de contagem.</p></div><button class="icon-btn" data-close>${ico("x")}</button></div>
@@ -427,7 +430,7 @@ function pageSales() {
 function saleText(s) { return `*92 FACTORY* — Pedido #${s.number}\n${fdt(s.sold_at)}\n\n${(s.items || []).map((i) => `${i.qty}x ${i.name} — ${brl(i.qty * i.price)}`).join("\n")}\n${n(s.discount) ? `\nDesconto: −${brl(s.discount)}` : ""}${n(s.shipping_charged) ? `\nFrete: ${brl(s.shipping_charged)}` : ""}\n*Total: ${brl(s.total)}*\nPagamento: ${s.payment_method || "—"}\n\nObrigado pela compra! Se é fácil, não é 92.`; }
 function saleDetail(s) {
   const cost = C.saleCost(s);
-  openModal(`<div class="modal__head"><div><div class="eyebrow">Venda #${s.number}</div><h2>${brl(s.total)}</h2><p class="muted">${fdt(s.sold_at)} · ${esc(s.seller_email || "")}</p></div><button class="icon-btn" data-close>${ico("x")}</button></div>
+  openModal(`<div class="modal__head"><div><div class="eyebrow">Venda #${s.number}</div><h2>${brl(s.total)}</h2><p class="muted">${fdt(s.sold_at)} · ${esc(who(s.seller_email))}</p></div><button class="icon-btn" data-close>${ico("x")}</button></div>
   <div class="rows">${(s.items || []).map((i) => `<div class="row"><div><b>${i.qty}× ${esc(i.name)}</b><div class="cell-sub">${brl(i.price)} cada</div></div><div class="r">${brl(i.qty * i.price)}</div></div>`).join("")}</div>
   <div class="divider"></div><div class="kv"><span>Cliente</span><b>${esc(s.customer_name || "—")} ${s.customer_phone ? "· " + esc(s.customer_phone) : ""}</b><span>Canal / pagamento</span><b>${esc(s.channel || "—")} · ${esc(s.payment_method || "—")}</b><span>Desconto</span><b>${brl(s.discount)}</b><span>Frete cobrado</span><b>${brl(s.shipping_charged)}</b><span>Custo dos produtos</span><b>${brl(cost)}</b><span>Lucro</span><b class="${C.saleProfit(s) < 0 ? "neg" : "pos"}">${brl(C.saleProfit(s))}</b></div>
   <div class="modal__foot">${s.status !== "cancelada" ? `<button class="btn btn--danger btn--sm spacer" id="sCancel">Cancelar venda</button>` : ""}${s.status === "pendente" ? `<button class="btn btn--ghost btn--sm" id="sPaid">Marcar como paga</button>` : ""}<button class="btn btn--ghost btn--sm" id="sCopy">${ico("copy")}Copiar comprovante</button>${s.customer_phone ? `<a class="btn btn--orange btn--sm" target="_blank" rel="noopener" href="https://wa.me/55${String(s.customer_phone).replace(/\D/g, "").replace(/^55/, "")}?text=${encodeURIComponent(saleText(s))}">Enviar no WhatsApp</a>` : ""}</div>`, (m) => {
@@ -499,7 +502,7 @@ function pageFinance() {
   const opTot = opEx.reduce((a, e) => a + n(e.amount), 0), wTot = withdraw.reduce((a, e) => a + n(e.amount), 0);
   const gross = rev - shipIn - cogs, net = gross - opTot;
   const imp = S.shipments.filter((s) => C.inPeriod(s.ordered_at || s.created_at, P)).reduce((a, s) => { const k = C.shipInfo(s); return { prod: a.prod + k.base, extra: a.extra + k.extras }; }, { prod: 0, extra: 0 });
-  const owners = S.members.filter((m) => m.role !== "equipe"); const split = S.company.settings?.split || {};
+  const owners = S.members.filter((m) => m.role !== "equipe" && !m.email.endsWith("@92factory.local")); const split = S.company.settings?.split || {};
   const byPay = {}; sales.forEach((s) => (byPay[s.payment_method || "Outro"] = (byPay[s.payment_method || "Outro"] || 0) + n(s.total)));
   const byCat = {}; opEx.forEach((e) => (byCat[e.category] = (byCat[e.category] || 0) + n(e.amount)));
   return ph("Dinheiro", "Financeiro", "Resultado do período, despesas e divisão entre sócios.", `${periodSeg()}<button class="btn btn--orange btn--sm" id="newExp">${ico("plus")}Lançar despesa</button>`) + `
@@ -530,14 +533,14 @@ function pageSettings() {
   return ph("Configurações", "Ajustes", `${esc(S.company.name)} · você é ${me ? { dono: "dono", socio: "sócio", equipe: "equipe" }[me.role] : "membro"}`) + `
   <div class="cols"><div class="stack">
     <div class="panel"><h2>Empresa</h2><form id="coF" class="stack"><div class="grid2"><label class="field"><span>Nome</span><input id="co_n" value="${esc(S.company.name)}"></label><label class="field"><span>Segmento</span><input id="co_s" value="${esc(S.company.segment || "")}"></label><label class="field"><span>Cotação padrão ¥1 = R$</span><input id="co_r" inputmode="decimal" value="${String(S.company.cny_rate).replace(".", ",")}"><small>Usada em produtos sem lote e como padrão de novos lotes.</small></label></div><div><button class="btn btn--orange btn--sm">Salvar empresa</button></div></form></div>
-    <div class="panel"><h2>Pessoas com acesso ${owner ? `<button class="btn btn--ghost btn--sm" id="addMem">${ico("users")}Adicionar</button>` : ""}</h2><div class="rows">${S.members.map((m) => `<div class="row"><div><b>${esc(m.display_name || m.email)}</b><div class="cell-sub">${esc(m.email)}</div></div><span class="badge badge--${m.role === "dono" ? "orange" : "info"}">${{ dono: "Dono", socio: "Sócio", equipe: "Equipe" }[m.role]}</span>${m.role !== "equipe" ? `<input class="input" style="width:76px;height:34px;text-align:right" data-split="${esc(m.email)}" inputmode="decimal" value="${(split[m.email] ?? 100 / S.members.filter((x) => x.role !== "equipe").length).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}" title="% do lucro" ${owner ? "" : "disabled"}><span class="muted">%</span>` : ""}${owner && m.email.toLowerCase() !== S.user.email.toLowerCase() ? `<button class="icon-btn" data-rmmem="${esc(m.email)}" title="Remover">${ico("trash")}</button>` : ""}</div>`).join("")}</div><p class="muted" style="font-size:12px;margin:10px 0 0">A pessoa adicionada entra em “Criar conta” com o mesmo e-mail. Os % definem a divisão do lucro no Financeiro.</p></div>
+    <div class="panel"><h2>Pessoas com acesso ${owner ? `<button class="btn btn--ghost btn--sm" id="addMem">${ico("users")}Adicionar</button>` : ""}</h2><div class="rows">${S.members.map((m) => `<div class="row"><div><b>${esc(m.display_name || m.email)}</b><div class="cell-sub">${esc(m.email.endsWith("@92factory.local") ? "Login compartilhado: " + who(m.email) : m.email)}</div></div><span class="badge badge--${m.role === "dono" ? "orange" : "info"}">${{ dono: "Dono", socio: "Sócio", equipe: "Equipe" }[m.role]}</span>${m.role !== "equipe" && !m.email.endsWith("@92factory.local") ? `<input class="input" style="width:76px;height:34px;text-align:right" data-split="${esc(m.email)}" inputmode="decimal" value="${(split[m.email] ?? 100 / S.members.filter((x) => x.role !== "equipe" && !x.email.endsWith("@92factory.local")).length).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}" title="% do lucro" ${owner ? "" : "disabled"}><span class="muted">%</span>` : ""}${owner && m.email.toLowerCase() !== S.user.email.toLowerCase() ? `<button class="icon-btn" data-rmmem="${esc(m.email)}" title="Remover">${ico("trash")}</button>` : ""}</div>`).join("")}</div><p class="muted" style="font-size:12px;margin:10px 0 0">A pessoa adicionada entra em “Criar conta” com o mesmo e-mail. Os % definem a divisão do lucro no Financeiro.</p></div>
   </div><div class="stack">
     <div class="panel"><h2>Correios · API oficial ${c.configured ? '<span class="badge badge--ok">Conectado</span>' : '<span class="badge">Não configurado</span>'}</h2>
       <p class="muted" style="margin:0 0 12px;font-size:13px">O rastreio automático usa a API oficial dos Correios (CWS). Ela exige conta <b>Pessoa Jurídica</b> no Meu Correios com <b>contrato</b> e um <b>código de acesso às APIs</b>, gerado em cws.correios.com.br. As credenciais ficam guardadas só no servidor.</p>
       ${owner ? `<form id="crF" class="stack"><div class="grid2"><label class="field"><span>Usuário (CNPJ ou idCorreios)</span><input id="cr_u" value="${esc(c.user || "")}"></label><label class="field"><span>Código de acesso às APIs</span><input id="cr_c" type="password" placeholder="${c.configured ? "•••••• (guardado)" : ""}"></label><label class="field" style="grid-column:1/-1"><span>Cartão de postagem (opcional)</span><input id="cr_k" value="${esc(c.card || "")}"></label></div><div><button class="btn btn--orange btn--sm">Salvar credenciais</button></div></form>` : `<p class="muted">Só o dono da empresa altera as credenciais.</p>`}</div>
     <div class="panel"><h2>Dados e backup</h2><div class="hstack"><button class="btn btn--ghost btn--sm" id="bkp">${ico("download")}Baixar backup completo (Excel)</button><button class="btn btn--ghost btn--sm" id="imp2">${ico("upload")}Importar planilha</button></div><p class="muted" style="font-size:12px;margin:10px 0 0">O backup traz produtos, estoque, vendas, pacotes e despesas, cada um numa aba.</p></div>
     <div class="panel"><h2>Instalar no celular</h2><p class="muted" style="font-size:13px;margin:0">iPhone: abra no Safari › Compartilhar › <b>Adicionar à Tela de Início</b>.<br>Android: abra no Chrome › menu ⋮ › <b>Instalar app</b>.<br>Computador: ícone de instalar na barra de endereço do Chrome/Edge.</p></div>
-    <div class="panel"><h2>Conta</h2><div class="split"><span class="muted">${esc(S.user.email)}</span><div class="hstack"><button class="btn btn--ghost btn--sm" id="chPass">Trocar senha</button><button class="btn btn--danger btn--sm" id="out2">Sair</button></div></div><p class="muted" style="font-size:12px;margin:10px 0 0">92 Factory Control v${CFG.VERSION}</p></div>
+    <div class="panel"><h2>Conta</h2><div class="split"><span class="muted">${esc(who(S.user.email))}</span><div class="hstack"><button class="btn btn--ghost btn--sm" id="chPass">Trocar senha</button><button class="btn btn--danger btn--sm" id="out2">Sair</button></div></div><p class="muted" style="font-size:12px;margin:10px 0 0">92 Factory Control v${CFG.VERSION}</p></div>
   </div></div>`;
 }
 function passwordModal() {
@@ -549,7 +552,7 @@ function passwordModal() {
 /* ---- Mais (mobile) ---- */
 function pageMore() {
   return ph("Menu", "Mais", esc(S.company.name)) + `<div class="more-grid">${[["vender", "Vender", "sell"], ["estoque", "Estoque", "stock"], ["vendas", "Vendas", "receipt"], ["financeiro", "Financeiro", "money"], ["produtos", "Produtos", "box"], ["importacoes", "Pacotes", "plane"], ["ajustes", "Ajustes", "gear"]].map(([k, l, i]) => `<a href="#${k}">${ico(i)}${l}</a>`).join("")}</div>
-  <div class="panel" style="margin-top:16px"><div class="split"><span class="muted">${esc(S.user.email)}</span><button class="btn btn--danger btn--sm" id="out3">Sair</button></div></div>`;
+  <div class="panel" style="margin-top:16px"><div class="split"><span class="muted">${esc(who(S.user.email))}</span><button class="btn btn--danger btn--sm" id="out3">Sair</button></div></div>`;
 }
 
 /* ---------- import / export ---------- */

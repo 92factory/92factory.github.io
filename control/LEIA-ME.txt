@@ -19,6 +19,7 @@ INSTALAR COMO APP NO CELULAR
 PRIMEIRO ACESSO
   Os e-mails achadinhosdachina4@gmail.com e rodrigobastos03@gmail.com já são donos da 92 Factory.
   Quem ainda não tem senha: toque em "Criar conta" e use um desses e-mails.
+  Login compartilhado: usuário admin, senha 92Factory.
 
 ARQUIVOS
   index.html  app.js  app.css  config.js  -> o sistema
