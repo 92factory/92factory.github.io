@@ -647,7 +647,10 @@ function bindPage(k) {
 }
 
 /* ---------- PWA ---------- */
-if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+if ("serviceWorker" in navigator && location.protocol === "https:") {
+  navigator.serviceWorker.register("sw.js?v=4", { updateViaCache: "none" }).then((r) => r.update()).catch(() => {});
+  let reloaded = false; navigator.serviceWorker.addEventListener("controllerchange", () => { if (!reloaded) { reloaded = true; location.reload(); } });
+}
 addEventListener("online", () => $("#sync")?.classList.remove("off")); addEventListener("offline", () => { $("#sync")?.classList.add("off"); toast("Você está sem internet. As alterações não serão salvas até reconectar.", true); });
 
 /* ---------- boot ---------- */
