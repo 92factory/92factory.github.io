@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>92 Factory Control</title>
+<meta name="description" content="Sistema de gestão da loja: estoque, vendas, importações, rastreio e financeiro.">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#0A0A0A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="92 Control">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap">
+<link rel="stylesheet" href="app.css?v=1">
+</head>
+<body>
+<div id="boot" class="boot"><img src="logo.png" alt="92 factory"><span>Carregando…</span></div>
+
+<!-- LOGIN -->
+<section id="auth" class="auth" hidden>
+  <div class="auth__glow"></div>
+  <form id="authForm" class="auth__card glass">
+    <img src="logo.png" alt="92 factory" class="auth__logo">
+    <h1>92 Factory <b>Control</b></h1>
+    <p class="muted" id="authSub">Entre com o e-mail da sua conta.</p>
+    <label class="field"><span>E-mail</span><input id="authEmail" type="email" autocomplete="email" required></label>
+    <label class="field"><span>Senha</span><input id="authPass" type="password" autocomplete="current-password" minlength="6" required></label>
+    <button class="btn btn--orange btn--block" id="authBtn" type="submit">Entrar</button>
+    <p class="auth__msg" id="authMsg" role="status"></p>
+    <div class="auth__links">
+      <button type="button" class="link" id="authToggle">Criar conta</button>
+      <button type="button" class="link" id="authForgot">Esqueci a senha</button>
+    </div>
+  </form>
+  <p class="auth__foot">Se é fácil, não é 92.</p>
+</section>
+
+<!-- APP -->
+<div id="app" class="app" hidden>
+  <aside class="side">
+    <div class="side__brand"><img src="logo.png" alt=""><div><b>92 Factory</b><small>Control</small></div></div>
+    <button class="company" id="companyBtn" type="button"><span class="company__dot"></span><span id="companyName">—</span><svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg></button>
+    <nav class="nav" id="nav"></nav>
+    <div class="side__user"><span id="userEmail" class="muted"></span><button class="link" id="logoutBtn" type="button">Sair</button></div>
+  </aside>
+  <header class="top">
+    <img src="logo.png" alt="" class="top__logo">
+    <button class="company company--top" id="companyBtnTop" type="button"><span class="company__dot"></span><span id="companyNameTop">—</span><svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg></button>
+    <span class="sync" id="sync" title="Sincronizado"></span>
+  </header>
+  <main class="main" id="main"></main>
+  <nav class="tabbar" id="tabbar"></nav>
+</div>
+
+<div id="modal" class="modal" hidden><div class="modal__back" data-close></div><div class="modal__card glass" role="dialog" aria-modal="true"><div id="modalBody"></div></div></div>
+<div id="toast" class="toast" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="config.js?v=1"></script>
+<script src="app.js?v=1"></script>
+</body>
+</html>
