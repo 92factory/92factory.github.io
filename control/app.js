@@ -91,18 +91,13 @@ const C = {
 };
 
 /* ---------- auth ---------- */
-let authMode = "in";
 function showAuth() { $("#boot").hidden = true; $("#app").hidden = true; $("#auth").hidden = false; }
-$("#authToggle").onclick = () => { authMode = authMode === "in" ? "up" : "in"; $("#authBtn").textContent = authMode === "in" ? "Entrar" : "Criar conta"; $("#authToggle").textContent = authMode === "in" ? "Criar conta" : "Já tenho conta"; $("#authUserLbl").textContent = authMode === "in" ? "Usuário ou e-mail" : "E-mail"; $("#authSub").textContent = authMode === "in" ? "Entre com seu usuário ou e-mail." : "Use o e-mail que o dono da empresa cadastrou para você."; $("#authPass").autocomplete = authMode === "in" ? "current-password" : "new-password"; $("#authMsg").textContent = ""; };
-$("#authForgot").onclick = async () => { const email = $("#authEmail").value.trim(); if (!email) { $("#authMsg").textContent = "Digite seu e-mail acima e toque em “Esqueci a senha” de novo."; return; } const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.href.split("#")[0] }); $("#authMsg").textContent = error ? friendly(error) : "Enviamos um link para redefinir a senha no seu e-mail."; };
 $("#authForm").onsubmit = async (e) => {
   e.preventDefault(); const btn = $("#authBtn"); btn.disabled = true; $("#authMsg").textContent = "";
   const login = $("#authEmail").value.trim().toLowerCase(), password = $("#authPass").value;
   const email = login.includes("@") ? login : login + "@92factory.local";
-  if (authMode === "up" && !login.includes("@")) { $("#authMsg").textContent = "Para criar conta, use um e-mail de verdade."; btn.disabled = false; return; }
   try {
-    if (authMode === "up") { const { data, error } = await sb.auth.signUp({ email, password }); if (error) throw error; if (!data.session) { $("#authMsg").textContent = "Conta criada. Confirme pelo link enviado ao seu e-mail e depois entre."; btn.disabled = false; return; } }
-    else { const { error } = await sb.auth.signInWithPassword({ email, password }); if (error) throw error.message.includes("Invalid") ? new Error("Usuário ou senha incorretos.") : error; }
+    const { error } = await sb.auth.signInWithPassword({ email, password }); if (error) throw error.message.includes("Invalid") ? new Error("Usuário ou senha incorretos.") : error;
   } catch (err) { $("#authMsg").textContent = friendly(err); }
   btn.disabled = false;
 };
@@ -184,7 +179,7 @@ const companyPick = () => openModal(`
 $("#companyBtn").onclick = companyPick; $("#companyBtnTop").onclick = companyPick;
 
 function renderNoCompany() {
-  $("#main").innerHTML = `<div class="panel" style="max-width:560px;margin:40px auto"><div class="empty"><b>Você ainda não faz parte de nenhuma empresa</b><p>Se você é sócio, peça para o dono adicionar o e-mail <b>${esc(S.user?.email)}</b> em Ajustes › Pessoas. Ou crie a sua própria empresa agora.</p><button class="btn btn--orange" id="firstCo">${ico("plus")}Criar empresa</button><button class="link" id="reloadCo">Já fui adicionado, recarregar</button></div></div>`;
+  $("#main").innerHTML = `<div class="panel" style="max-width:560px;margin:40px auto"><div class="empty"><b>Você ainda não faz parte de nenhuma empresa</b><p>Este usuário ainda não tem acesso a nenhuma empresa. Crie uma empresa agora.</p><button class="btn btn--orange" id="firstCo">${ico("plus")}Criar empresa</button><button class="link" id="reloadCo">Já fui adicionado, recarregar</button></div></div>`;
   $("#firstCo").onclick = companyForm; $("#reloadCo").onclick = start;
 }
 function companyForm() {

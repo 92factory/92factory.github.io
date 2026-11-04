@@ -15,7 +15,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap">
-<link rel="stylesheet" href="app.css?v=2">
+<link rel="stylesheet" href="app.css?v=3">
 </head>
 <body>
 <div id="boot" class="boot"><img src="logo.png" alt="92 factory"><span>Carregando…</span></div>
@@ -26,15 +26,11 @@
   <form id="authForm" class="auth__card glass">
     <img src="logo.png" alt="92 factory" class="auth__logo">
     <h1>92 Factory <b>Control</b></h1>
-    <p class="muted" id="authSub">Entre com seu usuário ou e-mail.</p>
-    <label class="field"><span id="authUserLbl">Usuário ou e-mail</span><input id="authEmail" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" required placeholder="admin"></label>
+    <p class="muted" id="authSub">Entre com seu usuário e senha.</p>
+    <label class="field"><span id="authUserLbl">Usuário</span><input id="authEmail" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" required placeholder="admin"></label>
     <label class="field"><span>Senha</span><input id="authPass" type="password" autocomplete="current-password" minlength="6" required></label>
     <button class="btn btn--orange btn--block" id="authBtn" type="submit">Entrar</button>
     <p class="auth__msg" id="authMsg" role="status"></p>
-    <div class="auth__links">
-      <button type="button" class="link" id="authToggle">Criar conta</button>
-      <button type="button" class="link" id="authForgot">Esqueci a senha</button>
-    </div>
   </form>
   <p class="auth__foot">Se é fácil, não é 92.</p>
 </section>
@@ -62,6 +58,6 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="config.js?v=1"></script>
-<script src="app.js?v=2"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>
