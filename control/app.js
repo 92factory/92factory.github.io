@@ -403,7 +403,7 @@ function pageStock() {
   return head + `
   <div class="stack"><div class="kpis"><div class="kpi"><span>Peças em estoque</span><b>${units}</b><small>${active.length} produtos ativos</small></div><div class="kpi"><span>Entraram</span><b class="${inM ? "pos" : ""}">${inM ? "+" + inM : 0}</b><small>no período</small></div><div class="kpi"><span>Saíram</span><b class="${outM ? "neg" : ""}">${outM ? "−" + outM : 0}</b><small>vendas, saídas e ajustes</small></div><div class="kpi"><span>Zerados</span><b>${active.filter((p) => C.stock(p.id) <= 0).length}</b><small>produtos sem estoque</small></div></div>
   <div class="panel"><h2>Saldo por produto</h2><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Produto</th><th>Cor</th><th>Tamanho</th><th class="r">Entradas</th><th class="r">Vendas</th><th class="r">Outras saídas</th><th class="r">Saldo</th><th></th></tr></thead><tbody>
-  ${active.map((p) => { const ms = S.moves.filter((m) => m.product_id === p.id); const e = ms.filter((m) => m.qty > 0 && m.type !== "cancelamento").reduce((a, m) => a + m.qty, 0); const v = -ms.filter((m) => m.type === "venda" || m.type === "cancelamento").reduce((a, m) => a + m.qty, 0); const o = -ms.filter((m) => m.qty < 0 && m.type !== "venda").reduce((a, m) => a + m.qty, 0); return `<tr><td><div class="hstack" style="flex-wrap:nowrap">${pimg(p) ? `<img class="thumb" src="${esc(pimg(p))}" alt="">` : `<span class="thumb thumb--empty">92</span>`}<div><div class="cell-title">${esc(p.name)}</div><div class="cell-sub">${esc(p.sku || "")}</div></div></div></td><td><input class="cell-in cell-in--text" data-attr="color" data-id="${p.id}" value="${esc(p.color || "")}" placeholder="Cor" aria-label="Cor de ${esc(p.name)}"></td><td><input class="cell-in cell-in--size" data-attr="variant" data-id="${p.id}" value="${esc(p.variant || "")}" placeholder="Tam." aria-label="Tamanho de ${esc(p.name)}"></td><td class="r">${e}</td><td class="r">${v}</td><td class="r">${o}</td><td class="r">${stockBadge(p)}</td><td class="r"><button class="btn btn--ghost btn--sm" data-mv="${p.id}">Movimentar</button></td></tr>`; }).join("") || `<tr><td colspan="8"><div class="empty">Nenhum produto.</div></td></tr>`}
+  ${active.map((p) => { const ms = S.moves.filter((m) => m.product_id === p.id); const e = ms.filter((m) => m.qty > 0 && m.type !== "cancelamento").reduce((a, m) => a + m.qty, 0); const v = -ms.filter((m) => m.type === "venda" || m.type === "cancelamento").reduce((a, m) => a + m.qty, 0); const o = -ms.filter((m) => m.qty < 0 && m.type !== "venda").reduce((a, m) => a + m.qty, 0); return `<tr><td><div class="hstack" style="flex-wrap:nowrap">${pimg(p) ? `<img class="thumb" src="${esc(pimg(p))}" alt="">` : `<span class="thumb thumb--empty">92</span>`}<div><div class="cell-title">${esc(p.name)}</div><div class="cell-sub">${esc(p.sku || "")}</div></div></div></td><td><input class="cell-in cell-in--text" data-attr="color" data-id="${p.id}" value="${esc(p.color || "")}" placeholder="Cor" aria-label="Cor de ${esc(p.name)}"></td><td><input class="cell-in cell-in--size" data-attr="variant" data-id="${p.id}" value="${esc(p.variant || "")}" placeholder="Tam." aria-label="Tamanho de ${esc(p.name)}"></td><td class="r">${e}</td><td class="r">${v}</td><td class="r">${o}</td><td class="r">${stockBadge(p)}</td><td class="r"><div class="hstack" style="flex-wrap:nowrap;justify-content:flex-end"><button class="btn btn--ghost btn--sm" data-mv="${p.id}">Movimentar</button><button class="btn btn--danger btn--sm" data-rm="${p.id}">${ico("trash")}Remover</button></div></td></tr>`; }).join("") || `<tr><td colspan="8"><div class="empty">Nenhum produto.</div></td></tr>`}
   </tbody></table></div></div></div>`;
 }
 function moveForm(p) {
@@ -419,6 +419,23 @@ function moveForm(p) {
       if (type === "saida") qty = -Math.abs(qty); if (type === "entrada") qty = Math.abs(qty); if (type === "ajuste") qty = qty - C.stock(pid);
       if (!qty) { toast("Nada para registrar: a quantidade não muda o saldo.", true); return; }
       try { await q(sb.from("ctl_stock_moves").insert({ company_id: S.cid, product_id: pid, type, qty, unit_cost_cny: type === "entrada" ? n(prod.cost_cny) : null, shipment_id: type === "entrada" ? $("#m_sh", m).value || null : null, note: $("#m_n", m).value.trim() || null })); closeModal(); toast("Estoque atualizado"); await refresh(); } catch (err) { fail(err); } };
+  });
+}
+
+function removeProduct(p) {
+  const st = C.stock(p.id), sold = S.sales.some((s) => s.status !== "cancelada" && (s.items || []).some((i) => i.product_id === p.id));
+  openModal(`<div class="modal__head"><div><h2>Remover ${esc(p.name)}</h2><p class="muted">${esc([ctag(p), p.sku].filter(Boolean).join(" · "))} · ${st} em estoque</p></div><button class="icon-btn" data-close>${ico("x")}</button></div>
+  <div class="stack">
+    ${st > 0 ? `<button class="rm-opt" id="rmOut"><b>Tirar do estoque</b><span>Registra a saída de ${st > 1 ? `<input id="rmQty" type="number" min="1" max="${st}" value="${st}" class="cell-in cell-in--size" onclick="event.stopPropagation()">` : "1"} unidade(s). O produto continua cadastrado e aparece no Histórico.</span></button>` : ""}
+    <button class="rm-opt rm-opt--danger" id="rmDel"><b>Apagar o produto de vez</b><span>Apaga o cadastro, as fotos e o histórico de estoque dele.${sold ? " As vendas já feitas continuam registradas." : ""} Não dá para desfazer.</span></button>
+    <label class="field"><span>Motivo (opcional)</span><input id="rmWhy" placeholder="Ex.: vendido fora do sistema, defeito, troca…"></label>
+  </div>
+  <div class="modal__foot"><button class="btn btn--ghost" data-close>Cancelar</button></div>`, (m) => {
+    $("#rmOut", m) && ($("#rmOut", m).onclick = async () => { const qty = Math.min(st, Math.max(1, parseInt($("#rmQty", m)?.value) || 1)); try { await q(sb.from("ctl_stock_moves").insert({ company_id: S.cid, product_id: p.id, type: "saida", qty: -qty, note: $("#rmWhy", m).value.trim() || "Removido do estoque" })); closeModal(); toast(`${qty} unidade(s) de ${p.name} tirada(s) do estoque`); await refresh(); } catch (e) { fail(e); } });
+    $("#rmDel", m).onclick = () => { const why = $("#rmWhy", m).value.trim(); confirmBox("Apagar de vez?", `“${esc(p.name)}”${ctag(p) ? " (" + esc(ctag(p)) + ")" : ""} sai do sistema.${why ? " Motivo: " + esc(why) + "." : ""}`, "Apagar produto", async () => {
+      await q(sb.from("ctl_products").delete().eq("id", p.id));
+      const keys = (p.photos || []).map((u) => u.split("/ctl-fotos/")[1]).filter(Boolean).map(decodeURIComponent); if (keys.length) sb.storage.from("ctl-fotos").remove(keys);
+      toast("Produto apagado"); await refresh(); }); };
   });
 }
 
@@ -769,6 +786,7 @@ function bindPage(k) {
   if (k === "estoque") {
     $("#newMove").onclick = () => moveForm();
     $$("[data-mv]").forEach((b) => (b.onclick = () => moveForm(S.products.find((p) => p.id === b.dataset.mv))));
+    $$("[data-rm]").forEach((b) => (b.onclick = () => removeProduct(S.products.find((p) => p.id === b.dataset.rm))));
     $$("[data-mf]").forEach((b) => (b.onclick = () => { mFilter = b.dataset.mf; route(); }));
     $$("[data-attr]").forEach((i) => { i.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); const all = $$(`[data-attr="${i.dataset.attr}"]`); const nx = all[all.indexOf(i) + 1]; nx ? nx.focus() : i.blur(); } };
       i.onchange = async () => { const p = S.products.find((x) => x.id === i.dataset.id); const v = i.value.trim() || null; try { await q(sb.from("ctl_products").update({ [i.dataset.attr]: v }).eq("id", p.id)); p[i.dataset.attr] = v; i.classList.add("saved"); setTimeout(() => i.classList.remove("saved"), 900); } catch (err) { fail(err); } }; });

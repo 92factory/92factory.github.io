@@ -318,3 +318,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabula
 @media (max-width: 560px) { .phgrid { grid-template-columns: minmax(0,1fr); } .photo { width: 76px; height: 76px; } }
 .cell-in--text { width: 150px; text-align: left; }
 .cell-in--size { width: 70px; text-align: center; }
+.rm-opt { display: grid; gap: 4px; text-align: left; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--card); transition: border-color .2s, background .2s; }
+.rm-opt:hover { border-color: var(--text); }
+.rm-opt b { font-size: 15px; }
+.rm-opt span { color: var(--muted); font-size: 13px; }
+.rm-opt--danger b { color: var(--bad); }
+.rm-opt--danger:hover { border-color: var(--bad); background: rgba(255,90,58,.06); }
