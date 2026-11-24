@@ -64,23 +64,29 @@ const CHANNELS = ["Instagram", "WhatsApp", "Loja", "Site", "Indicação", "Outro
 const EXP_CATS = ["Frete nacional", "Embalagem", "Marketing", "Taxas e impostos", "Plataforma / Agente", "Retirada sócio", "Outros"];
 
 /* ---------- state ---------- */
-const S = { user: null, companies: [], cid: null, company: null, members: [], products: [], moves: [], shipments: [], sales: [], expenses: [], cart: [], period: store.get("period", "mes"), channel: null, correios: null };
+const S = { fixed: [], user: null, companies: [], cid: null, company: null, members: [], products: [], moves: [], shipments: [], sales: [], expenses: [], cart: [], period: store.get("period", "mes"), channel: null, correios: null };
 
 /* ---------- calculations ---------- */
 const C = {
   rateOf(shipId) { const sh = S.shipments.find((s) => s.id === shipId); return n(sh?.cny_rate) || n(S.company?.cny_rate) || 0.8; },
   baseCost(p) { return p.cost_brl != null && p.cost_brl !== "" ? n(p.cost_brl) : n(p.cost_cny) * C.rateOf(p.shipment_id); },
-  shipExtras(sh) { return n(sh.freight_brl) + n(sh.import_tax_brl) + n(sh.icms_brl) + n(sh.other_fees_brl); },
+  shipCorreios(sh) { return n(sh.correios_fee_brl) + n(sh.import_tax_brl) + n(sh.icms_brl) + S.expenses.filter((e) => e.kind === "correios" && e.shipment_id === sh.id).reduce((a, e) => a + n(e.amount), 0); },
+  shipExtras(sh) { return n(sh.freight_brl) + C.shipCorreios(sh) + n(sh.other_fees_brl); },
   shipInfo(sh) {
     const rate = n(sh.cny_rate) || n(S.company?.cny_rate) || 0.8;
-    const ent = S.moves.filter((m) => m.shipment_id === sh.id && m.type === "entrada");
     let units = 0, cnyTot = 0, base = 0;
-    ent.forEach((m) => { const p = S.products.find((x) => x.id === m.product_id); const uc = m.unit_cost_cny != null ? n(m.unit_cost_cny) : n(p?.cost_cny); units += m.qty; cnyTot += m.qty * uc; base += p && p.cost_brl != null && p.cost_brl !== "" ? m.qty * n(p.cost_brl) : m.qty * uc * rate; });
-    const extras = C.shipExtras(sh);
-    return { rate, units, cnyTot, base, extras, factor: base > 0 ? extras / base : 0, total: base + extras };
+    S.moves.forEach((m) => { if (m.shipment_id !== sh.id || m.type !== "entrada") return; const p = S.products.find((x) => x.id === m.product_id); if (!p) return; units += m.qty; cnyTot += m.qty * n(p.cost_cny); base += m.qty * C.baseCost(p); });
+    const freight = n(sh.freight_brl), correios = C.shipCorreios(sh), other = n(sh.other_fees_brl), extras = freight + correios + other;
+    return { rate, units, cnyTot, base, freight, correios, other, extras, factor: base > 0 ? extras / base : 0, total: base + extras };
   },
-  factorOf(shipId) { const sh = S.shipments.find((s) => s.id === shipId); return sh ? C.shipInfo(sh).factor : 0; },
-  landed(p) { const b = C.baseCost(p); return b * (1 + C.factorOf(p.shipment_id)); },
+  share(p, amount, k) { return amount && k.units ? amount / k.units : 0; },
+  parts(p) {
+    const prod = C.baseCost(p); let frete = n(p.freight_brl), correios = n(p.correios_fee_brl), outras = 0;
+    const sh = S.shipments.find((s) => s.id === p.shipment_id);
+    if (sh) { const k = C.shipInfo(sh); frete += C.share(p, k.freight, k); correios += C.share(p, k.correios, k); outras += C.share(p, k.other, k); }
+    return { prod, frete, correios, outras, total: prod + frete + correios + outras };
+  },
+  landed(p) { return C.parts(p).total; },
   stock(pid) { return S.moves.reduce((a, m) => (m.product_id === pid ? a + m.qty : a), 0); },
   inTransit(pid) { return Math.min(Math.max(C.stock(pid), 0), S.moves.reduce((a, m) => { if (m.product_id !== pid || m.type !== "entrada" || !m.shipment_id) return a; const sh = S.shipments.find((s) => s.id === m.shipment_id); return sh && sh.status !== "entregue" ? a + m.qty : a; }, 0)); },
   itemCost(it) { const p = S.products.find((x) => x.id === it.product_id); return (p ? C.landed(p) : n(it.unit_cost)) * n(it.qty); },
@@ -88,7 +94,16 @@ const C = {
   saleProfit(s) { return n(s.total) - n(s.shipping_charged) - C.saleCost(s); },
   periodRange(p) { const now = new Date(); let from = null; if (p === "mes") from = new Date(now.getFullYear(), now.getMonth(), 1); else if (p === "30") from = new Date(now - 30 * 864e5); else if (p === "ano") from = new Date(now.getFullYear(), 0, 1); return from; },
   inPeriod(d, p) { const f = C.periodRange(p); return !f || new Date(d) >= f; },
+  spent(e) { return e.amount != null && !PLANNED.includes(e.status); },
+  monthsIn(P, start) { const now = new Date(); const s = new Date((start || today()) + "T00:00:00"); if (s > now) return 0; if (P === "mes" || P === "30") return 1; const from = P === "ano" ? new Date(now.getFullYear(), 0, 1) : s; const f = from < s ? s : from; return (now.getFullYear() - f.getFullYear()) * 12 + now.getMonth() - f.getMonth() + 1; },
+  fixedTotal(P) { return S.fixed.filter((f) => f.active && f.amount != null).reduce((a, f) => a + n(f.amount) * C.monthsIn(P, f.start_month), 0); },
+  opExp(P) { return S.expenses.filter((e) => e.kind !== "correios" && e.category !== "Retirada sócio" && C.spent(e) && C.inPeriod(e.spent_at, P)); },
+  opExpTotal(P) { return C.opExp(P).reduce((a, e) => a + n(e.amount), 0) + C.fixedTotal(P); },
 };
+const PLANNED = ["Falta comprar", "Falta fazer"];
+const LOJA_ST = ["Já tenho", "A caminho", "Pago", "Em andamento", "Falta comprar", "Falta fazer"];
+const stBadge = (st) => ({ "Já tenho": "ok", Pago: "ok", "A caminho": "info", "Em andamento": "warn", "Falta comprar": "bad", "Falta fazer": "bad" }[st] || "");
+const pimg = (p) => p.image_url || (p.photos || [])[0] || "";
 
 /* ---------- auth ---------- */
 function showAuth() { $("#boot").hidden = true; $("#app").hidden = true; $("#auth").hidden = false; }
@@ -125,15 +140,16 @@ async function loadCompany() {
   S.company = S.companies.find((c) => c.id === S.cid); store.set("cid", S.cid);
   $("#companyName").textContent = $("#companyNameTop").textContent = S.company?.name || "—";
   const cid = S.cid;
-  const [members, products, moves, shipments, sales, expenses] = await Promise.all([
+  const [members, products, moves, shipments, sales, expenses, fixed] = await Promise.all([
     q(sb.from("ctl_members").select("*").eq("company_id", cid).order("created_at")),
     q(sb.from("ctl_products").select("*").eq("company_id", cid).order("name")),
     q(sb.from("ctl_stock_moves").select("*").eq("company_id", cid).order("created_at", { ascending: false }).limit(10000)),
     q(sb.from("ctl_shipments").select("*").eq("company_id", cid).order("created_at", { ascending: false })),
     q(sb.from("ctl_sales").select("*").eq("company_id", cid).order("sold_at", { ascending: false }).limit(5000)),
-    q(sb.from("ctl_expenses").select("*").eq("company_id", cid).order("spent_at", { ascending: false })),
+    q(sb.from("ctl_expenses").select("*").eq("company_id", cid).order("spent_at", { ascending: false }).order("created_at")),
+    q(sb.from("ctl_fixed_costs").select("*").eq("company_id", cid).order("created_at")),
   ]);
-  Object.assign(S, { members, products, moves, shipments, sales, expenses });
+  Object.assign(S, { members, products, moves, shipments, sales, expenses, fixed });
   S.cart = store.get("cart:" + cid, []).filter((c) => products.some((p) => p.id === c.product_id));
   startRealtime();
 }
@@ -141,12 +157,12 @@ let rtTimer;
 function startRealtime() {
   stopRealtime();
   S.channel = sb.channel("ctl-" + S.cid);
-  ["ctl_products", "ctl_stock_moves", "ctl_sales", "ctl_shipments", "ctl_expenses", "ctl_members"].forEach((t) =>
+  ["ctl_products", "ctl_stock_moves", "ctl_sales", "ctl_shipments", "ctl_expenses", "ctl_members", "ctl_fixed_costs"].forEach((t) =>
     S.channel.on("postgres_changes", { event: "*", schema: "public", table: t, filter: "company_id=eq." + S.cid }, () => { clearTimeout(rtTimer); rtTimer = setTimeout(refresh, 600); }));
   S.channel.subscribe((st) => { $("#sync").classList.toggle("off", st !== "SUBSCRIBED"); $("#sync").title = st === "SUBSCRIBED" ? "Sincronizado em tempo real" : "Reconectando…"; });
 }
 function stopRealtime() { if (S.channel) { sb.removeChannel(S.channel); S.channel = null; } }
-async function refresh() { if ($("#modal").hidden === false) { refresh.pending = true; return; } try { await loadCompany(); route(); } catch (e) { console.warn(e); } }
+async function refresh() { if ($("#modal").hidden === false) { refresh.pending = true; return; } if (document.activeElement?.matches?.("#main input, #main select, #main textarea")) { clearTimeout(refresh.t); refresh.t = setTimeout(refresh, 1500); return; } try { await loadCompany(); route(); } catch (e) { console.warn(e); } }
 
 /* ---------- navigation ---------- */
 const PAGES = [
@@ -210,12 +226,12 @@ function pageHome() {
   const paid = sales.filter((s) => s.status === "paga");
   const rev = paid.reduce((a, s) => a + n(s.total), 0);
   const profit = paid.reduce((a, s) => a + C.saleProfit(s), 0);
-  const exp = S.expenses.filter((e) => C.inPeriod(e.spent_at, S.period) && e.category !== "Retirada sócio").reduce((a, e) => a + n(e.amount), 0);
+  const exp = C.opExpTotal(S.period);
   const pending = sales.filter((s) => s.status === "pendente").reduce((a, s) => a + n(s.total), 0);
   const active = S.products.filter((p) => p.active);
   let units = 0, stockCost = 0, stockSale = 0, transit = 0;
   active.forEach((p) => { const st = C.stock(p.id); if (st > 0) { units += st; stockCost += st * C.landed(p); stockSale += st * n(p.price); } transit += C.inTransit(p.id); });
-  const invested = S.moves.filter((m) => m.type === "entrada").reduce((a, m) => { const p = S.products.find((x) => x.id === m.product_id); return a + m.qty * (m.unit_cost_cny != null ? n(m.unit_cost_cny) : n(p?.cost_cny)); }, 0);
+  const invested = S.moves.filter((m) => m.type === "entrada").reduce((a, m) => { const p = S.products.find((x) => x.id === m.product_id); return a + m.qty * (p ? C.landed(p) : 0); }, 0);
   const openShips = S.shipments.filter((s) => s.status !== "entregue");
   const taxes = S.shipments.filter((s) => s.tax_generated && !s.tax_paid);
   const low = active.filter((p) => C.stock(p.id) <= n(p.min_stock)).slice(0, 6);
@@ -228,14 +244,14 @@ function pageHome() {
     <div class="kpis">
       <div class="kpi kpi--hero"><span>Faturamento</span><b>${brl(rev)}</b><small>${paid.length} venda${paid.length === 1 ? "" : "s"} paga${paid.length === 1 ? "" : "s"}${pending ? ` · ${brl(pending)} a receber` : ""}</small></div>
       <div class="kpi"><span>Lucro bruto</span><b class="${profit < 0 ? "neg" : ""}">${brl(profit)}</b><small>Margem ${pct(rev ? profit / rev : NaN)} · já com frete e taxas</small></div>
-      <div class="kpi"><span>Lucro líquido</span><b class="${profit - exp < 0 ? "neg" : ""}">${brl(profit - exp)}</b><small>Depois de ${brl(exp)} em despesas</small></div>
+      <div class="kpi"><span>Lucro líquido</span><b class="${profit - exp < 0 ? "neg" : ""}">${brl(profit - exp)}</b><small>Depois de ${brl(exp)} em despesas e custos fixos</small></div>
       <div class="kpi"><span>Ticket médio</span><b>${brl(paid.length ? rev / paid.length : 0)}</b><small>por venda</small></div>
     </div>
     <div class="kpis">
       <div class="kpi"><span>Peças em estoque</span><b>${units}</b><small>${transit ? `${transit} ainda a caminho` : "todas na mão"}</small></div>
       <div class="kpi"><span>Estoque a custo</span><b>${brl(stockCost)}</b><small>Vale ${brl(stockSale)} na venda</small></div>
       <div class="kpi"><span>Lucro em estoque</span><b>${brl(stockSale - stockCost)}</b><small>se vender tudo pelo preço</small></div>
-      <div class="kpi"><span>Total investido</span><b>${cny(invested)}</b><small>em produtos (¥), todas as compras</small></div>
+      <div class="kpi"><span>Investido em produtos</span><b>${brl(invested)}</b><small>com frete e taxa dos Correios</small></div>
     </div>
     ${taxes.length ? `<div class="note"><b>${taxes.length === 1 ? "Um pacote gerou taxa" : `${taxes.length} pacotes geraram taxa`} nos Correios:</b> ${taxes.map((t) => esc(t.name)).join(", ")}. <a class="link" href="#importacoes">Ver pacotes</a></div>` : ""}
     <div class="cols">
@@ -280,13 +296,18 @@ function renderProductList() {
   const el = $("#plist"); if (!el) return;
   if (!list.length) { el.innerHTML = `<div class="panel"><div class="empty"><b>${S.products.length ? "Nada encontrado" : "Nenhum produto ainda"}</b>${S.products.length ? "" : `<span>Cadastre um produto ou importe a sua planilha.</span>`}</div></div>`; return; }
   if (pFilter.view === "table") {
-    let tc = 0, ts = 0, tu = 0, tp = 0;
-    el.innerHTML = `<div class="panel"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Produto</th><th class="r">Custo ¥</th><th class="r">Custo R$</th><th class="r">Custo final</th><th class="r">Venda</th><th class="r">Lucro/un</th><th class="r">Margem</th><th class="r">Estoque</th><th class="r">Lucro total</th></tr></thead><tbody>
-    ${list.map((p) => { const L = C.landed(p), st = C.stock(p.id), pr = n(p.price), lu = pr - L; tc += n(p.cost_cny) * Math.max(st, 0); tu += Math.max(st, 0); ts += Math.max(st, 0) * pr; tp += Math.max(st, 0) * lu; return `<tr class="click" data-pid="${p.id}"><td><div class="cell-title">${esc(p.name)}</div><div class="cell-sub">${esc([p.sku, p.category, p.variant].filter(Boolean).join(" · "))}</div></td><td class="r">${cny(p.cost_cny)}</td><td class="r">${brl(C.baseCost(p))}</td><td class="r"><b>${brl(L)}</b></td><td class="r">${brl(pr)}</td><td class="r ${lu < 0 ? "neg" : "pos"}">${brl(lu)}</td><td class="r">${pct(pr ? lu / pr : NaN)}</td><td class="r">${stockBadge(p)}</td><td class="r"><b>${brl(Math.max(st, 0) * lu)}</b></td></tr>`; }).join("")}
-    </tbody><tfoot><tr><td>Total em estoque</td><td class="r">${cny(tc)}</td><td></td><td></td><td class="r">${brl(ts)}</td><td></td><td></td><td class="r">${tu}</td><td class="r pos">${brl(tp)}</td></tr></tfoot></table></div></div>`;
+    let tu = 0, ts = 0, tc = 0, tp = 0, tcy = 0;
+    const fv = (v) => (n(v) ? String(v).replace(".", ",") : "");
+    el.innerHTML = `<div class="panel"><p class="muted" style="margin:0 0 12px;font-size:13px">Digite o custo em ¥ e o preço de venda direto na tabela. Salva sozinho.</p><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Produto</th><th>Tam.</th><th class="r">Custo ¥</th><th class="r">Produto R$</th><th class="r">Frete</th><th class="r">Taxa Correios</th><th class="r">Custo final</th><th class="r">Venda R$</th><th class="r">Lucro/un</th><th class="r">Estoque</th></tr></thead><tbody>
+    ${list.map((p) => { const k = C.parts(p), st = Math.max(C.stock(p.id), 0), pr = n(p.price), lu = pr - k.total; tu += st; tcy += st * n(p.cost_cny); tc += st * k.total; ts += st * pr; tp += st * lu; return `<tr class="click" data-pid="${p.id}"><td><div class="hstack" style="flex-wrap:nowrap">${pimg(p) ? `<img class="thumb" src="${esc(pimg(p))}" alt="">` : `<span class="thumb thumb--empty">92</span>`}<div><div class="cell-title">${esc(p.name)}</div><div class="cell-sub">${esc([p.sku, p.category].filter(Boolean).join(" · "))}</div></div></div></td><td>${esc(p.variant || "—")}</td>
+      <td class="r"><input class="cell-in" data-edit="cost_cny" data-id="${p.id}" inputmode="decimal" value="${fv(p.cost_cny)}" placeholder="¥ 0" aria-label="Custo em yuan de ${esc(p.name)}"></td><td class="r">${brl(k.prod)}</td><td class="r">${brl(k.frete)}</td><td class="r">${brl(k.correios)}</td><td class="r"><b>${brl(k.total)}</b></td>
+      <td class="r"><input class="cell-in" data-edit="price" data-id="${p.id}" inputmode="decimal" value="${fv(p.price)}" placeholder="R$ 0" aria-label="Preço de venda de ${esc(p.name)}"></td><td class="r ${lu < 0 ? "neg" : "pos"}">${pr ? brl(lu) : "—"}</td><td class="r">${stockBadge(p)}</td></tr>`; }).join("")}
+    </tbody><tfoot><tr><td colspan="2">Total em estoque (${tu} peças)</td><td class="r">${cny(tcy)}</td><td colspan="3"></td><td class="r">${brl(tc)}</td><td class="r">${brl(ts)}</td><td class="r pos">${brl(tp)}</td><td></td></tr></tfoot></table></div></div>`;
+    $$(".cell-in", el).forEach((i) => { i.onclick = (e) => e.stopPropagation(); i.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); const all = $$(`.cell-in[data-edit="${i.dataset.edit}"]`, el); const nx = all[all.indexOf(i) + 1]; (nx || i).focus(); nx?.select?.(); if (!nx) i.blur(); } };
+      i.onchange = async () => { const p = S.products.find((x) => x.id === i.dataset.id); const v = num(i.value); try { await q(sb.from("ctl_products").update({ [i.dataset.edit]: v }).eq("id", p.id)); p[i.dataset.edit] = v; i.classList.add("saved"); setTimeout(() => i.classList.remove("saved"), 900); const row = i.closest("tr"); const k = C.parts(p), lu = n(p.price) - k.total; const c = row.children; c[3].textContent = brl(k.prod); c[4].textContent = brl(k.frete); c[5].textContent = brl(k.correios); c[6].innerHTML = `<b>${brl(k.total)}</b>`; c[8].textContent = n(p.price) ? brl(lu) : "—"; c[8].className = "r " + (lu < 0 ? "neg" : "pos"); } catch (err) { fail(err); } }; });
   } else {
-    el.innerHTML = `<div class="pgrid">${list.map((p) => { const L = C.landed(p), pr = n(p.price); return `<button class="pcard" data-pid="${p.id}"><div class="pcard__img">${p.image_url ? `<img src="${esc(p.image_url)}" alt="" loading="lazy" onerror="this.remove()">` : `<span class="ph-ico">92</span>`}${stockBadge(p)}</div><div class="pcard__body"><div><div class="pcard__name">${esc(p.name)}</div><div class="pcard__meta">${esc([p.sku, p.category, p.variant].filter(Boolean).join(" · "))}</div></div>
-      <div class="pcard__row"><span>Custo</span><b>${cny(p.cost_cny)} · ${brl(L)}</b></div><div class="pcard__row"><span>Lucro/un</span><b class="${pr - L < 0 ? "neg" : "pos"}">${brl(pr - L)} (${pct(pr ? (pr - L) / pr : NaN)})</b></div><div class="pcard__price num">${brl(pr)}</div></div></button>`; }).join("")}</div>`;
+    el.innerHTML = `<div class="pgrid">${list.map((p) => { const L = C.landed(p), pr = n(p.price); return `<button class="pcard" data-pid="${p.id}"><div class="pcard__img">${pimg(p) ? `<img src="${esc(pimg(p))}" alt="" loading="lazy" onerror="this.remove()">` : `<span class="ph-ico">92</span>`}${stockBadge(p)}</div><div class="pcard__body"><div><div class="pcard__name">${esc(p.name)}</div><div class="pcard__meta">${esc([p.variant ? "Tam. " + p.variant : "", p.sku, p.category].filter(Boolean).join(" · "))}</div></div>
+      <div class="pcard__row"><span>Custo final</span><b>${brl(L)}</b></div><div class="pcard__row"><span>Lucro/un</span><b class="${pr - L < 0 ? "neg" : "pos"}">${pr ? `${brl(pr - L)} (${pct((pr - L) / pr)})` : "defina o preço"}</b></div><div class="pcard__price num">${pr ? brl(pr) : "Sem preço"}</div></div></button>`; }).join("")}</div>`;
   }
   $$("[data-pid]", el).forEach((b) => (b.onclick = () => productForm(S.products.find((p) => p.id === b.dataset.pid))));
 }
@@ -305,44 +326,83 @@ function productForm(p) {
     <div class="grid3"><label class="field"><span>Custo em yuan (¥)</span><input id="f_cny" inputmode="decimal" value="${p.cost_cny === "" ? "" : esc(String(p.cost_cny).replace(".", ","))}" placeholder="0,00"></label>
     <label class="field"><span>Custo em real (R$)</span><input id="f_brl" inputmode="decimal" value="${p.cost_brl != null && p.cost_brl !== "" ? esc(String(p.cost_brl).replace(".", ",")) : ""}" placeholder="pela cotação"><small id="f_brlHint"></small></label>
     <label class="field"><span>Preço de venda (R$)</span><input id="f_price" inputmode="decimal" required value="${p.price === "" ? "" : esc(String(p.price).replace(".", ","))}" placeholder="0,00"></label></div>
+    <div class="grid2"><label class="field"><span>Frete por unidade (R$)</span><input id="f_fr" inputmode="decimal" value="${n(p.freight_brl) ? esc(String(p.freight_brl).replace(".", ",")) : ""}" placeholder="0,00"><small>Além do frete do pacote, se tiver</small></label>
+    <label class="field"><span>Taxa dos Correios por unidade (R$)</span><input id="f_tc" inputmode="decimal" value="${n(p.correios_fee_brl) ? esc(String(p.correios_fee_brl).replace(".", ",")) : ""}" placeholder="0,00"><small>Além da taxa do pacote, se tiver</small></label></div>
     <div class="panel" style="padding:14px"><div class="kv" id="f_calc"></div></div>
     <div class="grid2">${isNew ? `<label class="field"><span>Quantidade que entrou</span><input id="f_qty" type="number" min="0" value="1"></label>` : ""}<label class="field"><span>Alerta de estoque baixo</span><input id="f_min" type="number" min="0" value="${n(p.min_stock)}"></label>
-    <label class="field" style="grid-column:1/-1"><span>Foto (link da imagem)</span><input id="f_img" value="${esc(p.image_url || "")}" placeholder="https://…"></label>
+    ${isNew ? "" : `<div class="field" style="grid-column:1/-1"><span>Fotos</span><div class="photos" id="f_photos">${photoStrip(p)}</div></div>`}
     <label class="field" style="grid-column:1/-1"><span>Link de compra</span><input id="f_link" value="${esc(p.link || "")}" placeholder="Link da Kakobuy, Weidian…"></label>
     <label class="field" style="grid-column:1/-1"><span>Observações</span><textarea id="f_notes">${esc(p.notes || "")}</textarea></label></div>
     <div class="modal__foot">${isNew ? "" : `<button type="button" class="btn btn--danger btn--sm spacer" id="pDel">${ico("trash")}Excluir</button><button type="button" class="btn btn--ghost btn--sm" id="pMove">${ico("stock")}Movimentar estoque</button>`}<button type="button" class="btn btn--ghost" data-close>Cancelar</button><button class="btn btn--orange">${isNew ? "Cadastrar" : "Salvar"}</button></div>
   </form>`, (m) => {
-    const calc = () => { const sh = $("#f_ship", m).value || null; const rate = C.rateOf(sh); const c = num($("#f_cny", m).value), b = $("#f_brl", m).value.trim() ? num($("#f_brl", m).value) : c * rate; const L = b * (1 + C.factorOf(sh)); const pr = num($("#f_price", m).value); $("#f_brlHint", m).textContent = `¥1 = ${brl(rate)} → ${brl(c * rate)}`;
-      $("#f_calc", m).innerHTML = `<span>Custo do produto</span><b>${brl(b)}</b><span>Frete e taxas do lote (rateio)</span><b>${brl(L - b)}</b><span>Custo final por unidade</span><b>${brl(L)}</b><span>Lucro por unidade</span><b class="${pr - L < 0 ? "neg" : "pos"}">${brl(pr - L)} · ${pct(pr ? (pr - L) / pr : NaN)}</b>`; };
+    const calc = () => { const sh = $("#f_ship", m).value || null; const rate = C.rateOf(sh); const c = num($("#f_cny", m).value); const tmp = { id: p.id, shipment_id: sh, cost_cny: c, cost_brl: $("#f_brl", m).value.trim() ? num($("#f_brl", m).value) : null, freight_brl: num($("#f_fr", m).value), correios_fee_brl: num($("#f_tc", m).value) }; const k = C.parts(tmp); const pr = num($("#f_price", m).value); $("#f_brlHint", m).textContent = `¥1 = ${brl(rate)} → ${brl(c * rate)}`;
+      $("#f_calc", m).innerHTML = `<span>Produto</span><b>${brl(k.prod)}</b><span>Frete</span><b>${brl(k.frete)}</b><span>Taxa dos Correios</span><b>${brl(k.correios)}</b>${k.outras ? `<span>Outras taxas</span><b>${brl(k.outras)}</b>` : ""}<span>Custo final por unidade</span><b>${brl(k.total)}</b><span>Lucro por unidade</span><b class="${pr - k.total < 0 ? "neg" : "pos"}">${brl(pr - k.total)} · ${pct(pr ? (pr - k.total) / pr : NaN)}</b>`; };
     $$("input,select", m).forEach((i) => i.addEventListener("input", calc)); calc();
     $("#pf", m).onsubmit = async (e) => { e.preventDefault(); const btn = $("button:not([type])", m); btn.disabled = true;
-      const row = { company_id: S.cid, name: $("#f_name", m).value.trim(), category: $("#f_cat", m).value.trim() || null, sku: $("#f_sku", m).value.trim() || nextSku(), variant: $("#f_var", m).value.trim() || null, shipment_id: $("#f_ship", m).value || null, cost_cny: num($("#f_cny", m).value), cost_brl: $("#f_brl", m).value.trim() ? num($("#f_brl", m).value) : null, price: num($("#f_price", m).value), min_stock: parseInt($("#f_min", m).value) || 0, image_url: $("#f_img", m).value.trim() || null, link: $("#f_link", m).value.trim() || null, notes: $("#f_notes", m).value.trim() || null };
+      const row = { company_id: S.cid, name: $("#f_name", m).value.trim(), category: $("#f_cat", m).value.trim() || null, sku: $("#f_sku", m).value.trim() || nextSku(), variant: $("#f_var", m).value.trim() || null, shipment_id: $("#f_ship", m).value || null, cost_cny: num($("#f_cny", m).value), cost_brl: $("#f_brl", m).value.trim() ? num($("#f_brl", m).value) : null, price: num($("#f_price", m).value), freight_brl: num($("#f_fr", m).value), correios_fee_brl: num($("#f_tc", m).value), min_stock: parseInt($("#f_min", m).value) || 0, link: $("#f_link", m).value.trim() || null, notes: $("#f_notes", m).value.trim() || null };
       try {
         if (isNew) { const np = await q(sb.from("ctl_products").insert(row).select().single()); const qty = parseInt($("#f_qty", m).value) || 0; if (qty) await q(sb.from("ctl_stock_moves").insert({ company_id: S.cid, product_id: np.id, type: "entrada", qty, unit_cost_cny: row.cost_cny, shipment_id: row.shipment_id, note: "Cadastro do produto" })); }
         else await q(sb.from("ctl_products").update(row).eq("id", p.id));
         closeModal(); toast(isNew ? "Produto cadastrado" : "Produto salvo"); await refresh();
       } catch (err) { btn.disabled = false; fail(err); } };
+    if (!isNew) bindPhotos($("#f_photos", m), p);
     if (!isNew) { $("#pDel", m).onclick = () => confirmBox("Excluir produto?", `“${esc(p.name)}” e todo o histórico de estoque dele serão apagados. As vendas já feitas continuam registradas.`, "Excluir", async () => { await q(sb.from("ctl_products").delete().eq("id", p.id)); toast("Produto excluído"); await refresh(); }); $("#pMove", m).onclick = () => moveForm(p); }
   });
 }
 function nextSku() { const pre = (S.company.name.match(/\d+/)?.[0] || S.company.name.slice(0, 3).toUpperCase()); const nums = S.products.map((p) => parseInt(String(p.sku || "").split("-").pop())).filter((x) => !isNaN(x)); return `${pre}-${String((Math.max(0, ...nums) + 1)).padStart(3, "0")}`; }
 
+/* ---- Fotos ---- */
+function photoStrip(p) { const ph = p.photos || []; return ph.map((u, i) => `<button type="button" class="photo" data-ph="${i}"><img src="${esc(u)}" alt="" loading="lazy">${u === p.image_url || (!p.image_url && i === 0) ? '<span class="photo__cover">Capa</span>' : ""}</button>`).join("") + `<label class="photo photo--add"><input type="file" accept="image/*" multiple hidden data-up="${p.id}">${ico("plus")}<span>Foto</span></label>`; }
+async function shrinkImage(file) { try { const bmp = await createImageBitmap(file); const sc = Math.min(1, 1400 / Math.max(bmp.width, bmp.height)); const c = document.createElement("canvas"); c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc); c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height); const b = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.82)); return b || file; } catch { return file; } }
+async function uploadPhotos(p, files) {
+  const urls = [];
+  for (const [i, f] of [...files].entries()) {
+    const blob = await shrinkImage(f); const path = `${S.cid}/${p.id}/${Date.now()}-${i}.jpg`;
+    const { error } = await sb.storage.from("ctl-fotos").upload(path, blob, { contentType: blob.type || "image/jpeg", upsert: false }); if (error) throw error;
+    urls.push(sb.storage.from("ctl-fotos").getPublicUrl(path).data.publicUrl);
+  }
+  const photos = [...(p.photos || []), ...urls]; const patch = { photos, image_url: p.image_url || photos[0] || null };
+  await q(sb.from("ctl_products").update(patch).eq("id", p.id)); Object.assign(p, patch); return urls.length;
+}
+function bindPhotos(root, p, after) {
+  if (!root) return;
+  $$("[data-up]", root).forEach((inp) => (inp.onchange = async () => { if (!inp.files.length) return; const lab = inp.closest(".photo--add"); lab.classList.add("busy"); lab.querySelector("span").textContent = "Enviando…"; try { const nf = await uploadPhotos(p, inp.files); toast(nf === 1 ? "Foto adicionada" : `${nf} fotos adicionadas`); } catch (err) { fail(err); } if (after) after(); else { root.innerHTML = photoStrip(p); bindPhotos(root, p); } }));
+  $$("[data-ph]", root).forEach((b) => (b.onclick = () => photoViewer(p, +b.dataset.ph, after)));
+}
+function photoViewer(p, i, after) {
+  const url = p.photos[i];
+  openModal(`<div class="modal__head"><div><h2>${esc(p.name)}</h2><p class="muted">Foto ${i + 1} de ${p.photos.length}${p.variant ? " · Tam. " + esc(p.variant) : ""}</p></div><button class="icon-btn" data-close>${ico("x")}</button></div>
+  <img src="${esc(url)}" alt="" style="width:100%;border-radius:14px;display:block;max-height:65dvh;object-fit:contain;background:#000">
+  <div class="modal__foot"><button class="btn btn--danger btn--sm spacer" id="phDel">${ico("trash")}Apagar foto</button>${url === p.image_url ? "" : `<button class="btn btn--ghost btn--sm" id="phCover">Usar como capa</button>`}<a class="btn btn--ghost btn--sm" href="${esc(url)}" target="_blank" rel="noopener">${ico("ext")}Abrir</a></div>`, (m) => {
+    $("#phCover", m) && ($("#phCover", m).onclick = async () => { try { await q(sb.from("ctl_products").update({ image_url: url }).eq("id", p.id)); p.image_url = url; closeModal(); toast("Capa alterada"); after ? after() : route(); } catch (e) { fail(e); } });
+    $("#phDel", m).onclick = async () => { const photos = p.photos.filter((_, j) => j !== i); const image_url = p.image_url === url ? photos[0] || null : p.image_url; try { await q(sb.from("ctl_products").update({ photos, image_url }).eq("id", p.id)); const key = url.split("/ctl-fotos/")[1]; if (key) sb.storage.from("ctl-fotos").remove([decodeURIComponent(key)]); Object.assign(p, { photos, image_url }); closeModal(); toast("Foto apagada"); after ? after() : route(); } catch (e) { fail(e); } };
+  });
+}
+
 /* ---- Estoque ---- */
 const MOVE_T = { entrada: ["Entrada", "ok"], saida: ["Saída", "bad"], venda: ["Venda", "orange"], ajuste: ["Ajuste", "info"], devolucao: ["Devolução", "ok"], cancelamento: ["Cancelamento", "info"] };
-let mFilter = "";
+let mFilter = "", stTab = store.get("stTab", "saldo"), phFilter = "";
 function pageStock() {
   const active = S.products.filter((p) => p.active);
   const units = active.reduce((a, p) => a + Math.max(0, C.stock(p.id)), 0);
   const inM = S.moves.filter((m) => m.qty > 0 && C.inPeriod(m.created_at, S.period) && m.type !== "cancelamento").reduce((a, m) => a + m.qty, 0);
   const outM = S.moves.filter((m) => m.qty < 0 && C.inPeriod(m.created_at, S.period)).reduce((a, m) => a - m.qty, 0);
   const list = S.moves.filter((m) => !mFilter || m.type === mFilter).slice(0, 300);
-  return ph("Controle", "Estoque", "Tudo o que entrou e saiu, com quem fez e quando.", `${periodSeg()}<button class="btn btn--orange btn--sm" id="newMove">${ico("plus")}Movimentar</button>`) + `
+  const tabs = `<div class="seg tabs" id="stTabs">${[["saldo", "Saldo"], ["fotos", "Fotos"], ["hist", "Histórico"]].map(([k, l]) => `<button data-t="${k}" class="${stTab === k ? "on" : ""}">${l}</button>`).join("")}</div>`;
+  const head = ph("Controle", "Estoque", stTab === "fotos" ? "Adicione fotos de cada par. Pelo celular, dá para tirar a foto na hora." : "Tudo o que entrou e saiu, com quem fez e quando.", `${stTab === "hist" ? periodSeg() : ""}<button class="btn btn--orange btn--sm" id="newMove">${ico("plus")}Movimentar</button>`) + tabs;
+  if (stTab === "fotos") {
+    const withPh = active.filter((p) => (p.photos || []).length).length;
+    const shown = active.filter((p) => !phFilter || (phFilter === "sem" ? !(p.photos || []).length : (p.photos || []).length));
+    return head + `<div class="stack"><div class="split"><span class="muted">${withPh} de ${active.length} produtos com foto</span><div class="chips">${[["", "Todos"], ["sem", "Sem foto"], ["com", "Com foto"]].map(([k, l]) => `<button class="chip ${phFilter === k ? "on" : ""}" data-phf="${k}">${l}</button>`).join("")}</div></div>
+    <div class="phgrid">${shown.map((p) => `<div class="phcard" data-phcard="${p.id}"><div class="phcard__head"><div><b>${esc(p.name)}</b><div class="cell-sub">${esc([p.variant ? "Tam. " + p.variant : "", p.sku].filter(Boolean).join(" · "))}</div></div>${stockBadge(p)}</div><div class="photos">${photoStrip(p)}</div></div>`).join("") || `<div class="panel"><div class="empty">Nada nesse filtro.</div></div>`}</div></div>`;
+  }
+  if (stTab === "hist") return head + `<div class="panel"><h2>Histórico <div class="chips">${[["", "Tudo"], ...Object.entries(MOVE_T).map(([k, v]) => [k, v[0]])].map(([k, l]) => `<button class="chip ${mFilter === k ? "on" : ""}" data-mf="${k}">${l}</button>`).join("")}</div></h2>
+  ${list.length ? `<div class="rows">${list.map((m) => { const p = S.products.find((x) => x.id === m.product_id); const sh = S.shipments.find((s) => s.id === m.shipment_id); const t = MOVE_T[m.type] || [m.type, ""]; return `<div class="row"><div><b>${esc(p?.name || "Produto removido")}</b><div class="cell-sub">${fdt(m.created_at)} · ${esc(who(m.created_by))}${sh ? " · " + esc(sh.name) : ""}${m.note ? " · " + esc(m.note) : ""}</div></div><span class="badge badge--${t[1]}">${t[0]}</span><div class="r" style="min-width:48px"><b class="${m.qty < 0 ? "neg" : "pos"}">${m.qty > 0 ? "+" : ""}${m.qty}</b></div>${m.sale_id ? "" : `<button class="icon-btn" data-delmv="${m.id}" title="Apagar">${ico("trash")}</button>`}</div>`; }).join("")}</div>` : `<div class="empty">Nada por aqui.</div>`}</div>`;
+  return head + `
   <div class="stack"><div class="kpis"><div class="kpi"><span>Peças em estoque</span><b>${units}</b><small>${active.length} produtos ativos</small></div><div class="kpi"><span>Entraram</span><b class="pos">+${inM}</b><small>no período</small></div><div class="kpi"><span>Saíram</span><b class="neg">−${outM}</b><small>vendas, saídas e ajustes</small></div><div class="kpi"><span>Zerados</span><b>${active.filter((p) => C.stock(p.id) <= 0).length}</b><small>produtos sem estoque</small></div></div>
   <div class="panel"><h2>Saldo por produto</h2><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Produto</th><th class="r">Entradas</th><th class="r">Vendas</th><th class="r">Outras saídas</th><th class="r">Saldo</th><th></th></tr></thead><tbody>
-  ${active.map((p) => { const ms = S.moves.filter((m) => m.product_id === p.id); const e = ms.filter((m) => m.qty > 0 && m.type !== "cancelamento").reduce((a, m) => a + m.qty, 0); const v = -ms.filter((m) => m.type === "venda" || m.type === "cancelamento").reduce((a, m) => a + m.qty, 0); const o = -ms.filter((m) => m.qty < 0 && m.type !== "venda").reduce((a, m) => a + m.qty, 0); return `<tr><td><div class="cell-title">${esc(p.name)}</div><div class="cell-sub">${esc(p.sku || "")}</div></td><td class="r">${e}</td><td class="r">${v}</td><td class="r">${o}</td><td class="r">${stockBadge(p)}</td><td class="r"><button class="btn btn--ghost btn--sm" data-mv="${p.id}">Movimentar</button></td></tr>`; }).join("") || `<tr><td colspan="6"><div class="empty">Nenhum produto.</div></td></tr>`}
-  </tbody></table></div></div>
-  <div class="panel"><h2>Histórico <div class="chips">${[["", "Tudo"], ...Object.entries(MOVE_T).map(([k, v]) => [k, v[0]])].map(([k, l]) => `<button class="chip ${mFilter === k ? "on" : ""}" data-mf="${k}">${l}</button>`).join("")}</div></h2>
-  ${list.length ? `<div class="rows">${list.map((m) => { const p = S.products.find((x) => x.id === m.product_id); const sh = S.shipments.find((s) => s.id === m.shipment_id); const t = MOVE_T[m.type] || [m.type, ""]; return `<div class="row"><div><b>${esc(p?.name || "Produto removido")}</b><div class="cell-sub">${fdt(m.created_at)} · ${esc(who(m.created_by))}${sh ? " · " + esc(sh.name) : ""}${m.note ? " · " + esc(m.note) : ""}</div></div><span class="badge badge--${t[1]}">${t[0]}</span><div class="r" style="min-width:48px"><b class="${m.qty < 0 ? "neg" : "pos"}">${m.qty > 0 ? "+" : ""}${m.qty}</b></div>${m.sale_id ? "" : `<button class="icon-btn" data-delmv="${m.id}" title="Apagar">${ico("trash")}</button>`}</div>`; }).join("")}</div>` : `<div class="empty">Nada por aqui.</div>`}</div></div>`;
+  ${active.map((p) => { const ms = S.moves.filter((m) => m.product_id === p.id); const e = ms.filter((m) => m.qty > 0 && m.type !== "cancelamento").reduce((a, m) => a + m.qty, 0); const v = -ms.filter((m) => m.type === "venda" || m.type === "cancelamento").reduce((a, m) => a + m.qty, 0); const o = -ms.filter((m) => m.qty < 0 && m.type !== "venda").reduce((a, m) => a + m.qty, 0); return `<tr><td><div class="hstack" style="flex-wrap:nowrap">${pimg(p) ? `<img class="thumb" src="${esc(pimg(p))}" alt="">` : `<span class="thumb thumb--empty">92</span>`}<div><div class="cell-title">${esc(p.name)}</div><div class="cell-sub">${esc([p.variant ? "Tam. " + p.variant : "", p.sku].filter(Boolean).join(" · "))}</div></div></div></td><td class="r">${e}</td><td class="r">${v}</td><td class="r">${o}</td><td class="r">${stockBadge(p)}</td><td class="r"><button class="btn btn--ghost btn--sm" data-mv="${p.id}">Movimentar</button></td></tr>`; }).join("") || `<tr><td colspan="6"><div class="empty">Nenhum produto.</div></td></tr>`}
+  </tbody></table></div></div></div>`;
 }
 function moveForm(p) {
   openModal(`<div class="modal__head"><div><h2>Movimentar estoque</h2><p class="muted">Entrada de mercadoria, saída (brinde, perda, uso) ou ajuste de contagem.</p></div><button class="icon-btn" data-close>${ico("x")}</button></div>
@@ -440,13 +500,13 @@ function trackBar(st) { const step = sStep(st); const alert = ["aguardando_taxa"
 function pageShipments() {
   const open = S.shipments.filter((s) => s.status !== "entregue");
   const allExtras = S.shipments.reduce((a, s) => a + C.shipExtras(s), 0);
-  const taxes = S.shipments.reduce((a, s) => a + n(s.import_tax_brl) + n(s.icms_brl), 0);
+  const taxes = S.shipments.reduce((a, s) => a + C.shipCorreios(s), 0), frTot = S.shipments.reduce((a, s) => a + n(s.freight_brl), 0);
   return ph("Logística", "Importações e pacotes", "Cada lote com frete, impostos e rastreio. O custo extra é dividido entre os produtos do lote.", `<button class="btn btn--ghost btn--sm" id="trackAll">${ico("refresh")}Atualizar rastreios</button><button class="btn btn--orange btn--sm" id="newShip">${ico("plus")}Novo pacote</button>`) + `
-  <div class="stack"><div class="kpis"><div class="kpi"><span>Pacotes a caminho</span><b>${open.length}</b><small>${S.shipments.length} no total</small></div><div class="kpi"><span>Taxas pendentes</span><b class="${S.shipments.some((s) => s.tax_generated && !s.tax_paid) ? "neg" : ""}">${S.shipments.filter((s) => s.tax_generated && !s.tax_paid).length}</b><small>geradas e não pagas</small></div><div class="kpi"><span>Frete + taxas pagos</span><b>${brl(allExtras)}</b><small>todas as importações</small></div><div class="kpi"><span>Impostos (II + ICMS)</span><b>${brl(taxes)}</b><small>dentro do valor ao lado</small></div></div>
+  <div class="stack"><div class="kpis"><div class="kpi"><span>Pacotes a caminho</span><b>${open.length}</b><small>${S.shipments.length} no total</small></div><div class="kpi"><span>Taxas pendentes</span><b class="${S.shipments.some((s) => s.tax_generated && !s.tax_paid) ? "neg" : ""}">${S.shipments.filter((s) => s.tax_generated && !s.tax_paid).length}</b><small>geradas e não pagas</small></div><div class="kpi"><span>Frete internacional</span><b>${brl(frTot)}</b><small>todas as importações</small></div><div class="kpi"><span>Taxa dos Correios</span><b>${brl(taxes)}</b><small>total com frete: ${brl(allExtras)}</small></div></div>
   ${S.correios && !S.correios.configured ? `<div class="note note--muted">O rastreio automático pela API oficial dos Correios precisa das credenciais do contrato. <a class="link" href="#ajustes">Configurar em Ajustes</a>. Enquanto isso, use os botões “Correios” e “17TRACK” de cada pacote.</div>` : ""}
   <div class="ship-list">${S.shipments.map((s) => { const k = C.shipInfo(s); return `<button class="ship" data-ship="${s.id}"><div class="ship__top"><div><div class="ship__name">${esc(s.name)}</div><div class="ship__code">${esc(s.tracking_code || "Sem código de rastreio")} ${s.platform ? "· " + esc(s.platform) : ""}</div></div><div class="hstack">${s.tax_generated && !s.tax_paid ? '<span class="badge badge--warn">Taxa gerada</span>' : ""}${s.tax_paid ? '<span class="badge badge--ok">Taxa paga</span>' : ""}<span class="badge badge--${sBadge(s.status)}">${sLabel(s.status)}</span></div></div>
     ${trackBar(s.status)}
-    <div class="ship__facts"><span><b>${k.units}</b> peças</span><span>Produtos <b>${cny(k.cnyTot)}</b> · ${brl(k.base)}</span><span>Frete + taxas <b>${brl(k.extras)}</b></span><span>Custo total <b>${brl(k.total)}</b></span>${s.last_status ? `<span>Último: <b>${esc(s.last_status)}</b>${s.last_location ? " · " + esc(s.last_location) : ""}</span>` : ""}</div></button>`; }).join("") || `<div class="panel"><div class="empty"><b>Nenhum pacote</b><span>Cadastre o primeiro lote para controlar frete, taxas e rastreio.</span></div></div>`}</div></div>`;
+    <div class="ship__facts"><span><b>${k.units}</b> peças</span><span>Produtos <b>${cny(k.cnyTot)}</b> · ${brl(k.base)}</span><span>Frete <b>${brl(k.freight)}</b></span><span>Taxa Correios <b>${brl(k.correios)}</b></span><span>Custo total <b>${brl(k.total)}</b></span>${s.last_status ? `<span>Último: <b>${esc(s.last_status)}</b>${s.last_location ? " · " + esc(s.last_location) : ""}</span>` : ""}</div></button>`; }).join("") || `<div class="panel"><div class="empty"><b>Nenhum pacote</b><span>Cadastre o primeiro lote para controlar frete, taxas e rastreio.</span></div></div>`}</div></div>`;
 }
 async function trackShipment(s, quiet) {
   if (!s.tracking_code) { if (!quiet) toast("Adicione o código de rastreio primeiro.", true); return false; }
@@ -460,24 +520,23 @@ function shipmentForm(s) {
   const k = isNew ? null : C.shipInfo(s);
   const items = isNew ? [] : S.moves.filter((m) => m.shipment_id === s.id && m.type === "entrada");
   const fv = (v) => (v == null || v === "" ? "" : String(v).replace(".", ","));
-  openModal(`<div class="modal__head"><div><div class="eyebrow">${isNew ? "Novo pacote" : esc(s.platform || "Pacote")}</div><h2>${isNew ? "Cadastrar pacote" : esc(s.name)}</h2>${isNew ? "" : `<p class="muted">${k.units} peças · custo total ${brl(k.total)} · ${k.base ? `frete e taxas somam ${pct(k.factor)} no custo` : ""}</p>`}</div><button class="icon-btn" data-close>${ico("x")}</button></div>
+  openModal(`<div class="modal__head"><div><div class="eyebrow">${isNew ? "Novo pacote" : esc(s.platform || "Pacote")}</div><h2>${isNew ? "Cadastrar pacote" : esc(s.name)}</h2>${isNew ? "" : `<p class="muted">${k.units} peças · custo total ${brl(k.total)} · frete ${brl(k.freight)} · taxa dos Correios ${brl(k.correios)} · divididos igualmente: ${brl(k.units ? k.extras / k.units : 0)} por peça</p>`}</div><button class="icon-btn" data-close>${ico("x")}</button></div>
   ${isNew ? "" : `<div class="hstack" style="margin-bottom:16px">${s.tracking_code ? `<button class="btn btn--orange btn--sm" id="trk">${ico("refresh")}Atualizar rastreio</button><a class="btn btn--ghost btn--sm" target="_blank" rel="noopener" href="https://rastreamento.correios.com.br/app/index.php">${ico("ext")}Correios</a><a class="btn btn--ghost btn--sm" target="_blank" rel="noopener" href="https://t.17track.net/pt#nums=${encodeURIComponent(s.tracking_code)}">${ico("ext")}17TRACK</a><button class="btn btn--ghost btn--sm" id="cpy">${ico("copy")}Copiar código</button>` : ""}<a class="btn btn--ghost btn--sm" target="_blank" rel="noopener" href="https://www.correios.com.br/receber/encomenda/minhas-importacoes">${ico("ext")}Minhas Importações</a></div>`}
   <form id="sf" class="stack">
     <div class="grid2"><label class="field"><span>Nome do pacote</span><input id="s_name" required value="${esc(s.name)}"></label><label class="field"><span>Plataforma / agente</span><input id="s_plat" value="${esc(s.platform || "")}" placeholder="Kakobuy, CSSBuy…"></label>
     <label class="field"><span>Código de rastreio</span><input id="s_code" value="${esc(s.tracking_code || "")}" placeholder="Ex.: NX123456789BR" style="text-transform:uppercase"></label>
     <label class="field"><span>Situação</span><select id="s_st">${SHIP_STATUS.map(([k2, l]) => `<option value="${k2}" ${s.status === k2 ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>
     <div class="eyebrow" style="margin-top:4px">Custos de importação</div>
-    <div class="grid3"><label class="field"><span>Cotação ¥1 = R$</span><input id="s_rate" inputmode="decimal" value="${fv(s.cny_rate)}"></label><label class="field"><span>Frete internacional (R$)</span><input id="s_fr" inputmode="decimal" value="${fv(s.freight_brl)}" placeholder="0,00"></label><label class="field"><span>Imposto de importação (R$)</span><input id="s_ii" inputmode="decimal" value="${fv(s.import_tax_brl)}" placeholder="0,00"></label>
-    <label class="field"><span>ICMS (R$)</span><input id="s_icms" inputmode="decimal" value="${fv(s.icms_brl)}" placeholder="0,00"></label><label class="field"><span>Outras taxas (R$)</span><input id="s_oth" inputmode="decimal" value="${fv(s.other_fees_brl)}" placeholder="despacho, seguro…"></label><label class="field"><span>Peso (kg)</span><input id="s_kg" inputmode="decimal" value="${fv(s.weight_kg)}"></label></div>
+    <div class="grid3"><label class="field"><span>Cotação ¥1 = R$</span><input id="s_rate" inputmode="decimal" value="${fv(s.cny_rate)}"></label><label class="field"><span>Frete internacional (R$)</span><input id="s_fr" inputmode="decimal" value="${fv(s.freight_brl)}" placeholder="0,00"></label><label class="field"><span>Taxa dos Correios (R$)</span><input id="s_tc" inputmode="decimal" value="${fv(n(s.correios_fee_brl) + n(s.import_tax_brl) + n(s.icms_brl) || "")}" placeholder="0,00">${(() => { const lx = S.expenses.filter((e) => e.kind === "correios" && e.shipment_id === s.id).reduce((a, e) => a + n(e.amount), 0); return lx ? `<small>+ ${brl(lx)} lançados em Financeiro › Taxa dos Correios</small>` : `<small>Imposto + ICMS + despacho postal</small>`; })()}</label><label class="field"><span>Outras taxas (R$)</span><input id="s_oth" inputmode="decimal" value="${fv(s.other_fees_brl)}" placeholder="despacho, seguro…"></label><label class="field"><span>Peso (kg)</span><input id="s_kg" inputmode="decimal" value="${fv(s.weight_kg)}"></label></div>
     <div class="hstack"><label class="hstack"><input type="checkbox" id="s_tg" ${s.tax_generated ? "checked" : ""}> Taxa gerada</label><label class="hstack" style="margin-left:14px"><input type="checkbox" id="s_tp" ${s.tax_paid ? "checked" : ""}> Taxa paga</label></div>
     <div class="grid3"><label class="field"><span>Data da compra</span><input type="date" id="s_od" value="${s.ordered_at || ""}"></label><label class="field"><span>Data do envio</span><input type="date" id="s_sd" value="${s.shipped_at || ""}"></label><label class="field"><span>Data da entrega</span><input type="date" id="s_dd" value="${s.delivered_at || ""}"></label></div>
     <label class="field"><span>Observações</span><textarea id="s_notes">${esc(s.notes || "")}</textarea></label>
-    ${isNew ? "" : `<div class="panel" style="padding:14px"><h2 style="margin-bottom:8px">Rateio do custo por produto</h2><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Produto</th><th class="r">Qtd</th><th class="r">Custo ¥</th><th class="r">Custo R$</th><th class="r">Frete+taxas/un</th><th class="r">Custo final/un</th></tr></thead><tbody>${items.map((m) => { const p = S.products.find((x) => x.id === m.product_id); if (!p) return ""; const b = C.baseCost(p); return `<tr><td>${esc(p.name)}</td><td class="r">${m.qty}</td><td class="r">${cny(m.unit_cost_cny ?? p.cost_cny)}</td><td class="r">${brl(b)}</td><td class="r">${brl(b * k.factor)}</td><td class="r"><b>${brl(b * (1 + k.factor))}</b></td></tr>`; }).join("") || `<tr><td colspan="6" class="muted">Nenhum produto neste pacote ainda. Ao cadastrar produtos, escolha este lote.</td></tr>`}</tbody></table></div></div>
+    ${isNew ? "" : `<div class="panel" style="padding:14px"><h2 style="margin-bottom:8px">Rateio do custo por produto</h2><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Produto</th><th class="r">Qtd</th><th class="r">Custo ¥</th><th class="r">Produto R$</th><th class="r">Frete/un</th><th class="r">Taxa Correios/un</th><th class="r">Custo final/un</th></tr></thead><tbody>${items.map((m) => { const p = S.products.find((x) => x.id === m.product_id); if (!p) return ""; const pp = C.parts(p); return `<tr><td>${esc(p.name)}${p.variant ? ` <span class="muted">${esc(p.variant)}</span>` : ""}</td><td class="r">${m.qty}</td><td class="r">${cny(p.cost_cny)}</td><td class="r">${brl(pp.prod)}</td><td class="r">${brl(pp.frete)}</td><td class="r">${brl(pp.correios)}</td><td class="r"><b>${brl(pp.total)}</b></td></tr>`; }).join("") || `<tr><td colspan="7" class="muted">Nenhum produto neste pacote ainda. Ao cadastrar produtos, escolha este lote.</td></tr>`}</tbody></table></div></div>
     <div class="panel" style="padding:14px"><h2 style="margin-bottom:12px">Rastreamento ${s.last_checked_at ? `<span class="muted" style="font-size:12px;font-weight:500">atualizado ${fdt(s.last_checked_at)}</span>` : ""}</h2>${(s.events || []).length ? `<div class="timeline">${s.events.map((e) => `<div class="tl"><i></i><div><b>${esc(e.description)}</b><span>${fdt(e.at)}${e.place ? " · " + esc(e.place) : ""}${e.to ? " → " + esc(e.to) : ""}</span>${e.detail ? `<div class="cell-sub">${esc(e.detail)}</div>` : ""}</div></div>`).join("")}</div>` : `<div class="muted" style="font-size:13px">${s.tracking_code ? "Toque em “Atualizar rastreio” para buscar os eventos nos Correios." : "Adicione o código de rastreio quando o agente enviar o pacote."}</div>`}</div>`}
     <div class="modal__foot">${isNew ? "" : `<button type="button" class="btn btn--danger btn--sm spacer" id="sDel">${ico("trash")}Excluir</button>`}<button type="button" class="btn btn--ghost" data-close>Cancelar</button><button class="btn btn--orange">${isNew ? "Cadastrar" : "Salvar"}</button></div>
   </form>`, (m) => {
     $("#sf", m).onsubmit = async (e) => { e.preventDefault();
-      const row = { company_id: S.cid, name: $("#s_name", m).value.trim(), platform: $("#s_plat", m).value.trim() || null, tracking_code: $("#s_code", m).value.trim().toUpperCase() || null, status: $("#s_st", m).value, cny_rate: num($("#s_rate", m).value) || null, freight_brl: num($("#s_fr", m).value), import_tax_brl: num($("#s_ii", m).value), icms_brl: num($("#s_icms", m).value), other_fees_brl: num($("#s_oth", m).value), weight_kg: $("#s_kg", m).value ? num($("#s_kg", m).value) : null, tax_generated: $("#s_tg", m).checked, tax_paid: $("#s_tp", m).checked, ordered_at: $("#s_od", m).value || null, shipped_at: $("#s_sd", m).value || null, delivered_at: $("#s_dd", m).value || null, notes: $("#s_notes", m).value.trim() || null };
+      const row = { company_id: S.cid, name: $("#s_name", m).value.trim(), platform: $("#s_plat", m).value.trim() || null, tracking_code: $("#s_code", m).value.trim().toUpperCase() || null, status: $("#s_st", m).value, cny_rate: num($("#s_rate", m).value) || null, freight_brl: num($("#s_fr", m).value), correios_fee_brl: num($("#s_tc", m).value), import_tax_brl: 0, icms_brl: 0, other_fees_brl: num($("#s_oth", m).value), weight_kg: $("#s_kg", m).value ? num($("#s_kg", m).value) : null, tax_generated: $("#s_tg", m).checked, tax_paid: $("#s_tp", m).checked, ordered_at: $("#s_od", m).value || null, shipped_at: $("#s_sd", m).value || null, delivered_at: $("#s_dd", m).value || null, notes: $("#s_notes", m).value.trim() || null };
       try { if (isNew) await q(sb.from("ctl_shipments").insert(row)); else await q(sb.from("ctl_shipments").update(row).eq("id", s.id)); closeModal(); toast(isNew ? "Pacote cadastrado" : "Pacote salvo · custos dos produtos atualizados"); await refresh(); } catch (err) { fail(err); } };
     if (!isNew) {
       $("#sDel", m).onclick = () => confirmBox("Excluir pacote?", `Os produtos de “${esc(s.name)}” continuam no estoque, mas perdem o rateio de frete e taxas.`, "Excluir", async () => { await q(sb.from("ctl_shipments").delete().eq("id", s.id)); toast("Pacote excluído"); await refresh(); });
@@ -488,35 +547,124 @@ function shipmentForm(s) {
 }
 
 /* ---- Financeiro ---- */
+let finTab = store.get("finTab", "resumo"), lojaF = "";
+function finTabs() { return `<div class="seg tabs" id="finTabs">${[["resumo", "Resumo"], ["loja", "Compras da loja"], ["fixos", "Custos fixos"], ["correios", "Taxa dos Correios"]].map(([k, l]) => `<button data-t="${k}" class="${finTab === k ? "on" : ""}">${l}</button>`).join("")}</div>`; }
 function pageFinance() {
+  if (finTab === "loja") return pageLoja();
+  if (finTab === "fixos") return pageFixed();
+  if (finTab === "correios") return pageCorreios();
   const P = S.period;
   const sales = S.sales.filter((s) => s.status === "paga" && C.inPeriod(s.sold_at, P));
-  const rev = sales.reduce((a, s) => a + n(s.total), 0), shipIn = sales.reduce((a, s) => a + n(s.shipping_charged), 0), cogs = sales.reduce((a, s) => a + C.saleCost(s), 0);
+  const rev = sales.reduce((a, s) => a + n(s.total), 0), shipIn = sales.reduce((a, s) => a + n(s.shipping_charged), 0);
+  const sold = { prod: 0, frete: 0, correios: 0, outras: 0 };
+  sales.forEach((s) => (s.items || []).forEach((it) => { const p = S.products.find((x) => x.id === it.product_id); const k = p ? C.parts(p) : { prod: n(it.unit_cost), frete: 0, correios: 0, outras: 0 }; for (const f in sold) sold[f] += k[f] * n(it.qty); }));
+  const cogs = sold.prod + sold.frete + sold.correios + sold.outras;
   const exps = S.expenses.filter((e) => C.inPeriod(e.spent_at, P));
-  const opEx = exps.filter((e) => e.category !== "Retirada sócio"), withdraw = exps.filter((e) => e.category === "Retirada sócio");
-  const opTot = opEx.reduce((a, e) => a + n(e.amount), 0), wTot = withdraw.reduce((a, e) => a + n(e.amount), 0);
-  const gross = rev - shipIn - cogs, net = gross - opTot;
-  const imp = S.shipments.filter((s) => C.inPeriod(s.ordered_at || s.created_at, P)).reduce((a, s) => { const k = C.shipInfo(s); return { prod: a.prod + k.base, extra: a.extra + k.extras }; }, { prod: 0, extra: 0 });
+  const loja = C.opExp(P).filter((e) => e.kind === "loja").reduce((a, e) => a + n(e.amount), 0);
+  const other = C.opExp(P).filter((e) => e.kind !== "loja").reduce((a, e) => a + n(e.amount), 0);
+  const fixed = C.fixedTotal(P), withdraw = exps.filter((e) => e.category === "Retirada sócio"), wTot = withdraw.reduce((a, e) => a + n(e.amount), 0);
+  const gross = rev - shipIn - cogs, net = gross - loja - fixed - other;
+  // investimento total (compras no período)
+  const inv = { prod: 0, frete: 0, correios: 0 }; S.moves.filter((m) => m.type === "entrada" && C.inPeriod(m.created_at, P)).forEach((m) => { const p = S.products.find((x) => x.id === m.product_id); if (!p) return; const k = C.parts(p); inv.prod += k.prod * m.qty; inv.frete += k.frete * m.qty; inv.correios += (k.correios + k.outras) * m.qty; });
+  const invTot = inv.prod + inv.frete + inv.correios + loja + fixed + other;
   const owners = S.members.filter((m) => m.role !== "equipe" && !m.email.endsWith("@92factory.local")); const split = S.company.settings?.split || {};
   const byPay = {}; sales.forEach((s) => (byPay[s.payment_method || "Outro"] = (byPay[s.payment_method || "Outro"] || 0) + n(s.total)));
-  const byCat = {}; opEx.forEach((e) => (byCat[e.category] = (byCat[e.category] || 0) + n(e.amount)));
-  return ph("Dinheiro", "Financeiro", "Resultado do período, despesas e divisão entre sócios.", `${periodSeg()}<button class="btn btn--orange btn--sm" id="newExp">${ico("plus")}Lançar despesa</button>`) + `
-  <div class="stack"><div class="kpis"><div class="kpi kpi--hero"><span>Lucro líquido</span><b>${brl(net)}</b><small>margem ${pct(rev ? net / rev : NaN)}</small></div><div class="kpi"><span>Receita</span><b>${brl(rev)}</b><small>${sales.length} vendas pagas</small></div><div class="kpi"><span>Custo dos produtos vendidos</span><b>${brl(cogs)}</b><small>com frete e taxas de importação</small></div><div class="kpi"><span>Despesas</span><b>${brl(opTot)}</b><small>${opEx.length} lançamentos</small></div></div>
-  <div class="cols"><div class="panel"><h2>Demonstrativo do período</h2><div class="kv">
-    <span>Receita bruta das vendas</span><b>${brl(rev)}</b><span>(−) Frete repassado ao cliente</span><b>${brl(-shipIn)}</b><span>(−) Custo dos produtos (¥ convertido)</span><b>${brl(-sales.reduce((a, s) => a + (s.items || []).reduce((b, it) => { const p = S.products.find((x) => x.id === it.product_id); return b + (p ? C.baseCost(p) : n(it.unit_cost)) * n(it.qty); }, 0), 0))}</b><span>(−) Frete e taxas de importação rateados</span><b>${brl(-(cogs - sales.reduce((a, s) => a + (s.items || []).reduce((b, it) => { const p = S.products.find((x) => x.id === it.product_id); return b + (p ? C.baseCost(p) : n(it.unit_cost)) * n(it.qty); }, 0), 0)))}</b>
-    <span><b style="text-align:left">Lucro bruto</b></span><b>${brl(gross)}</b><span>(−) Despesas operacionais</span><b>${brl(-opTot)}</b><span><b style="text-align:left;color:var(--orange)">Lucro líquido</b></span><b style="color:var(--orange)">${brl(net)}</b><span>Retiradas dos sócios</span><b>${brl(wTot)}</b></div>
-    <div class="divider"></div><h2>Compras de importação no período</h2><div class="kv"><span>Produtos comprados</span><b>${brl(imp.prod)}</b><span>Frete + impostos + taxas</span><b>${brl(imp.extra)}</b><span>Total investido</span><b>${brl(imp.prod + imp.extra)}</b></div></div>
+  const others = exps.filter((e) => e.kind !== "loja" && e.kind !== "correios");
+  return ph("Dinheiro", "Financeiro", "Resultado do período, custos e divisão entre sócios.", `${periodSeg()}<button class="btn btn--orange btn--sm" id="newExp">${ico("plus")}Lançar despesa</button>`) + finTabs() + `
+  <div class="stack"><div class="kpis"><div class="kpi kpi--hero"><span>Lucro líquido</span><b>${brl(net)}</b><small>margem ${pct(rev ? net / rev : NaN)}</small></div><div class="kpi"><span>Receita</span><b>${brl(rev)}</b><small>${sales.length} vendas pagas</small></div><div class="kpi"><span>Custos totais</span><b>${brl(invTot)}</b><small>produtos, frete, Correios, loja e fixos</small></div><div class="kpi"><span>Taxa dos Correios</span><b>${brl(inv.correios)}</b><small>já somada nos custos</small></div></div>
+  <div class="cols"><div class="stack"><div class="panel"><h2>Custos totais do período</h2><div class="kv">
+    <span>Produtos (¥ convertido)</span><b>${brl(inv.prod)}</b><span>Frete</span><b>${brl(inv.frete)}</b><span>Taxa dos Correios</span><b>${brl(inv.correios)}</b><span>Compras da loja</span><b>${brl(loja)}</b><span>Custos fixos (aluguel, condomínio…)</span><b>${brl(fixed)}</b><span>Outras despesas</span><b>${brl(other)}</b>
+    <span><b style="text-align:left;color:var(--orange)">Total</b></span><b style="color:var(--orange)">${brl(invTot)}</b></div>${S.fixed.some((f) => f.active && f.amount == null) ? `<p class="muted" style="font-size:12px;margin:10px 0 0">Ainda sem valor: ${S.fixed.filter((f) => f.active && f.amount == null).map((f) => esc(f.name)).join(", ")}. <button class="link" data-goto="fixos">Preencher</button></p>` : ""}</div>
+    <div class="panel"><h2>Demonstrativo de vendas</h2><div class="kv">
+    <span>Receita bruta das vendas</span><b>${brl(rev)}</b><span>(−) Frete repassado ao cliente</span><b>${brl(-shipIn)}</b><span>(−) Produto</span><b>${brl(-sold.prod)}</b><span>(−) Frete</span><b>${brl(-sold.frete)}</b><span>(−) Taxa dos Correios</span><b>${brl(-(sold.correios + sold.outras))}</b>
+    <span><b style="text-align:left">Lucro bruto</b></span><b>${brl(gross)}</b><span>(−) Compras da loja</span><b>${brl(-loja)}</b><span>(−) Custos fixos</span><b>${brl(-fixed)}</b><span>(−) Outras despesas</span><b>${brl(-other)}</b><span><b style="text-align:left;color:var(--orange)">Lucro líquido</b></span><b style="color:var(--orange)">${brl(net)}</b><span>Retiradas dos sócios</span><b>${brl(wTot)}</b></div></div></div>
   <div class="stack"><div class="panel"><h2>Divisão entre sócios</h2>${owners.length ? `<div class="rows">${owners.map((o) => { const sh = split[o.email] ?? 100 / owners.length; const w = withdraw.filter((e) => (e.paid_by || "").toLowerCase() === o.email.toLowerCase()).reduce((a, e) => a + n(e.amount), 0); return `<div class="row"><div><b>${esc(o.display_name || o.email.split("@")[0])}</b><div class="cell-sub">${sh.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% · já retirou ${brl(w)}</div></div><div class="r"><b>${brl(net * sh / 100)}</b><div class="cell-sub">saldo ${brl(net * sh / 100 - w)}</div></div></div>`; }).join("")}</div><p class="muted" style="font-size:12px;margin:10px 0 0">Percentuais em Ajustes › Pessoas. Retiradas: lance uma despesa “Retirada sócio”.</p>` : `<div class="empty">Sem sócios cadastrados.</div>`}</div>
-    <div class="panel"><h2>Recebido por forma de pagamento</h2>${Object.keys(byPay).length ? `<div class="rows">${Object.entries(byPay).sort((a, b) => b[1] - a[1]).map(([k2, v]) => `<div class="row"><div><b>${esc(k2)}</b><div class="bar" style="margin-top:6px"><i style="width:${(v / rev) * 100}%"></i></div></div><div class="r">${brl(v)}</div></div>`).join("")}</div>` : `<div class="empty">Nenhum recebimento.</div>`}</div></div></div>
-  <div class="panel"><h2>Despesas ${Object.keys(byCat).length ? `<span class="muted" style="font-size:12px;font-weight:500">${Object.entries(byCat).map(([k2, v]) => `${esc(k2)} ${brl(v)}`).join(" · ")}</span>` : ""}</h2>${exps.length ? `<div class="rows">${exps.map((e) => `<div class="row"><div><b>${esc(e.description || e.category)}</b><div class="cell-sub">${fdate(e.spent_at)} · ${esc(e.category)}${e.paid_by ? " · " + esc(e.paid_by) : ""}</div></div><div class="r"><b>${brl(e.amount)}</b></div><button class="icon-btn" data-delexp="${e.id}" title="Apagar">${ico("trash")}</button></div>`).join("")}</div>` : `<div class="empty"><b>Nenhuma despesa no período</b><span>Embalagens, frete para cliente, anúncios, mensalidades…</span></div>`}</div></div>`;
+    <div class="panel"><h2>Recebido por forma de pagamento</h2>${Object.keys(byPay).length ? `<div class="rows">${Object.entries(byPay).sort((a, b) => b[1] - a[1]).map(([k2, v]) => `<div class="row"><div><b>${esc(k2)}</b><div class="bar" style="margin-top:6px"><i style="width:${(v / rev) * 100}%"></i></div></div><div class="r">${brl(v)}</div></div>`).join("")}</div>` : `<div class="empty">Nenhum recebimento.</div>`}</div>
+    <div class="panel"><h2>Outras despesas</h2>${others.length ? `<div class="rows">${others.map((e) => `<div class="row click" data-exp="${e.id}"><div><b>${esc(e.description || e.category)}</b><div class="cell-sub">${fdate(e.spent_at)} · ${esc(e.category)}${e.paid_by ? " · " + esc(who(e.paid_by)) : ""}</div></div><div class="r"><b>${brl(e.amount)}</b></div></div>`).join("")}</div>` : `<div class="empty"><span>Embalagens, frete para cliente, anúncios…</span></div>`}</div></div></div></div>`;
 }
-function expenseForm() {
-  openModal(`<div class="modal__head"><div><h2>Lançar despesa</h2><p class="muted">Frete de importação e impostos ficam no pacote, não aqui.</p></div><button class="icon-btn" data-close>${ico("x")}</button></div>
-  <form id="ef" class="stack"><div class="grid2"><label class="field"><span>Valor (R$)</span><input id="e_v" inputmode="decimal" required placeholder="0,00"></label><label class="field"><span>Data</span><input type="date" id="e_d" value="${today()}"></label>
-  <label class="field"><span>Categoria</span><select id="e_c">${EXP_CATS.map((c) => `<option>${c}</option>`).join("")}</select></label><label class="field"><span>Pago por / retirado por</span><select id="e_p"><option value="">Caixa da empresa</option>${S.members.map((m2) => `<option value="${esc(m2.email)}">${esc(m2.display_name || m2.email)}</option>`).join("")}</select></label></div>
-  <label class="field"><span>Descrição</span><input id="e_desc" placeholder="Ex.: 50 caixas de envio"></label>
-  <div class="modal__foot"><button type="button" class="btn btn--ghost" data-close>Cancelar</button><button class="btn btn--orange">Lançar</button></div></form>`, (m) => {
-    $("#ef", m).onsubmit = async (e) => { e.preventDefault(); try { await q(sb.from("ctl_expenses").insert({ company_id: S.cid, amount: num($("#e_v", m).value), spent_at: $("#e_d", m).value, category: $("#e_c", m).value, paid_by: $("#e_p", m).value || null, description: $("#e_desc", m).value.trim() || null })); closeModal(); toast("Despesa lançada"); await refresh(); } catch (err) { fail(err); } };
+function pageLoja() {
+  const all = S.expenses.filter((e) => e.kind === "loja");
+  const spent = all.filter(C.spent), planned = all.filter((e) => PLANNED.includes(e.status));
+  const tot = spent.reduce((a, e) => a + n(e.amount), 0), prev = planned.reduce((a, e) => a + n(e.amount), 0);
+  const list = all.filter((e) => !lojaF || (lojaF === "falta" ? PLANNED.includes(e.status) : e.status === lojaF));
+  const areas = [...new Set(list.map((e) => e.area || "Sem ambiente"))];
+  return ph("Dinheiro", "Compras da loja", "Tudo o que foi comprado para montar a loja. Entra como gasto no Financeiro.", `<button class="btn btn--ghost btn--sm" id="lojaImp">${ico("upload")}Importar planilha</button><button class="btn btn--orange btn--sm" id="lojaNew">${ico("plus")}Novo item</button>`) + finTabs() + `
+  <div class="stack"><div class="kpis"><div class="kpi kpi--hero"><span>Total gasto</span><b>${brl(tot)}</b><small>itens já pagos</small></div><div class="kpi"><span>Itens comprados</span><b>${spent.length}</b><small>${all.filter((e) => e.status === "A caminho").length} a caminho</small></div><div class="kpi"><span>Itens que faltam</span><b>${planned.length}</b><small>comprar ou fazer</small></div><div class="kpi"><span>Previsto pro que falta</span><b>${brl(prev)}</b><small>${planned.filter((e) => e.amount == null).length} sem valor ainda</small></div></div>
+  <div class="chips">${[["", "Todos"], ["Já tenho", "Já tenho"], ["A caminho", "A caminho"], ["falta", "Falta"]].map(([k, l]) => `<button class="chip ${lojaF === k ? "on" : ""}" data-lf="${k}">${l}</button>`).join("")}</div>
+  ${list.length ? areas.map((a) => { const it = list.filter((e) => (e.area || "Sem ambiente") === a); return `<div class="panel"><h2>${esc(a)} <span class="muted" style="font-size:12px;font-weight:500">${brl(it.filter(C.spent).reduce((x, e) => x + n(e.amount), 0))}</span></h2><div class="rows">${it.map((e) => `<div class="row click" data-exp="${e.id}"><div><b>${esc(e.description)}</b><div class="cell-sub">${esc([e.supplier, e.notes].filter(Boolean).join(" · "))}</div></div><span class="badge badge--${stBadge(e.status)}">${esc(e.status || "—")}</span><div class="r" style="min-width:92px"><b>${e.amount == null ? '<span class="muted">—</span>' : brl(e.amount)}</b></div></div>`).join("")}</div></div>`; }).join("") : `<div class="panel"><div class="empty"><b>Nenhum item</b><span>Importe a planilha de montagem ou adicione um item.</span></div></div>`}</div>`;
+}
+function pageFixed() {
+  const act = S.fixed.filter((f) => f.active); const tot = act.reduce((a, f) => a + n(f.amount), 0); const pend = act.filter((f) => f.amount == null);
+  return ph("Dinheiro", "Custos fixos", "Contas que se repetem todo mês. Entram no lucro líquido de cada mês.", `<button class="btn btn--orange btn--sm" id="fixNew">${ico("plus")}Novo custo fixo</button>`) + finTabs() + `
+  <div class="stack"><div class="kpis"><div class="kpi kpi--hero"><span>Total por mês</span><b>${brl(tot)}</b><small>${pend.length ? `sem ${pend.map((f) => esc(f.name.toLowerCase())).join(" e ")}` : "todos com valor"}</small></div><div class="kpi"><span>Contas</span><b>${act.length}</b><small>ativas</small></div><div class="kpi"><span>Aguardando valor</span><b>${pend.length}</b><small>${pend.map((f) => esc(f.name)).join(", ") || "nenhuma"}</small></div><div class="kpi"><span>No ano</span><b>${brl(C.fixedTotal("ano"))}</b><small>desde o início de cada conta</small></div></div>
+  <div class="panel"><p class="muted" style="margin:0 0 12px;font-size:13px">Quando a conta de luz ou internet chegar, digite o valor e ele entra nos custos.</p><div class="rows">${S.fixed.map((f) => `<div class="row"><div><b>${esc(f.name)}</b><div class="cell-sub">desde ${new Date(f.start_month + "T00:00:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}${f.due_day ? ` · vence dia ${f.due_day}` : ""}${f.active ? "" : " · pausado"}</div></div>${f.amount == null ? '<span class="badge badge--warn">Aguardando valor</span>' : ""}<input class="cell-in" data-fix="${f.id}" inputmode="decimal" value="${f.amount == null ? "" : String(f.amount).replace(".", ",")}" placeholder="R$ 0,00" aria-label="Valor de ${esc(f.name)}"><button class="icon-btn" data-fixedit="${f.id}" title="Editar">${ico("edit")}</button></div>`).join("") || `<div class="empty">Nenhum custo fixo.</div>`}</div></div></div>`;
+}
+function pageCorreios() {
+  const list = S.expenses.filter((e) => e.kind === "correios"); const ships = S.shipments.filter((s) => n(s.correios_fee_brl) + n(s.import_tax_brl) + n(s.icms_brl));
+  const tot = list.reduce((a, e) => a + n(e.amount), 0) + ships.reduce((a, s) => a + n(s.correios_fee_brl) + n(s.import_tax_brl) + n(s.icms_brl), 0);
+  const units = S.products.reduce((a, p) => a + (C.parts(p).correios ? 1 : 0), 0);
+  return ph("Dinheiro", "Taxa dos Correios", "Impostos e taxas pagos para liberar os pacotes. Separados aqui, mas somados no custo final de cada produto.", `<button class="btn btn--orange btn--sm" id="tcNew">${ico("plus")}Lançar taxa</button>`) + finTabs() + `
+  <div class="stack"><div class="kpis"><div class="kpi kpi--hero"><span>Total pago aos Correios</span><b>${brl(tot)}</b><small>${list.length + ships.length} lançamento(s)</small></div><div class="kpi"><span>Produtos com a taxa</span><b>${units}</b><small>no custo final</small></div><div class="kpi"><span>Média por produto</span><b>${brl(units ? tot / units : 0)}</b><small>dividida igualmente entre as peças</small></div><div class="kpi"><span>Taxas pendentes</span><b>${S.shipments.filter((s) => s.tax_generated && !s.tax_paid).length}</b><small>pacotes com taxa gerada</small></div></div>
+  <div class="panel"><div class="rows">${list.map((e) => { const sh = S.shipments.find((x) => x.id === e.shipment_id); return `<div class="row click" data-exp="${e.id}"><div><b>${esc(e.description || "Taxa dos Correios")}</b><div class="cell-sub">${fdate(e.spent_at)}${sh ? " · dividida entre os produtos de " + esc(sh.name) : " · sem pacote (não entra no custo dos produtos)"}${e.notes ? " · " + esc(e.notes) : ""}</div></div><div class="r"><b>${brl(e.amount)}</b></div></div>`; }).join("")}${ships.map((s) => `<div class="row"><div><b>${esc(s.name)}</b><div class="cell-sub">valor informado no pacote</div></div><div class="r"><b>${brl(n(s.correios_fee_brl) + n(s.import_tax_brl) + n(s.icms_brl))}</b></div></div>`).join("")}${list.length + ships.length ? "" : `<div class="empty">Nenhuma taxa lançada.</div>`}</div></div></div>`;
+}
+function expenseForm(e, kind) {
+  e = e || { kind: kind || "despesa", spent_at: today(), category: kind === "loja" ? "Montagem da loja" : kind === "correios" ? "Taxa dos Correios" : EXP_CATS[0], status: kind === "loja" ? "Já tenho" : kind === "correios" ? "Pago" : null, shipment_id: kind === "correios" ? S.shipments[0]?.id : null };
+  const isNew = !e.id, K = e.kind || "despesa"; const fv = (v) => (v == null || v === "" ? "" : String(v).replace(".", ","));
+  const title = { loja: "item da loja", correios: "taxa dos Correios", despesa: "despesa" }[K];
+  openModal(`<div class="modal__head"><div><h2>${isNew ? "Novo" : "Editar"} ${title}</h2>${K === "correios" ? `<p class="muted">Escolha o pacote: o valor é dividido entre os produtos dele.</p>` : ""}</div><button class="icon-btn" data-close>${ico("x")}</button></div>
+  <form id="ef" class="stack"><label class="field"><span>${K === "loja" ? "Item" : "Descrição"}</span><input id="e_desc" value="${esc(e.description || "")}" ${K === "loja" ? "required" : ""} placeholder="${K === "loja" ? "Ex.: Arara para roupas" : "Ex.: 50 caixas de envio"}"></label>
+  <div class="grid2"><label class="field"><span>Valor (R$)</span><input id="e_v" inputmode="decimal" value="${fv(e.amount)}" ${K === "loja" ? "" : "required"} placeholder="${K === "loja" ? "deixe vazio se ainda não sabe" : "0,00"}"></label><label class="field"><span>Data</span><input type="date" id="e_d" value="${e.spent_at || today()}"></label>
+  ${K === "loja" ? `<label class="field"><span>Status</span><select id="e_st">${LOJA_ST.map((x) => `<option ${e.status === x ? "selected" : ""}>${x}</option>`).join("")}</select></label><label class="field"><span>Ambiente</span><input id="e_area" list="areaList" value="${esc(e.area || "")}"><datalist id="areaList">${[...new Set(["Sala", "Banheiro", "Entrada", "Envios", "Área do café", "Geral", ...S.expenses.map((x) => x.area).filter(Boolean)])].map((a) => `<option>${esc(a)}</option>`).join("")}</datalist></label><label class="field" style="grid-column:1/-1"><span>Onde comprou</span><input id="e_sup" value="${esc(e.supplier || "")}" placeholder="Mercado Livre, Shopee…"></label>` : ""}
+  ${K === "correios" ? `<label class="field" style="grid-column:1/-1"><span>Pacote</span><select id="e_ship">${S.shipments.map((s) => `<option value="${s.id}" ${s.id === e.shipment_id ? "selected" : ""}>${esc(s.name)}</option>`).join("")}<option value="" ${e.shipment_id ? "" : "selected"}>Nenhum (não entra no custo dos produtos)</option></select></label>` : ""}
+  ${K === "despesa" ? `<label class="field"><span>Categoria</span><select id="e_c">${EXP_CATS.map((c) => `<option ${e.category === c ? "selected" : ""}>${c}</option>`).join("")}</select></label><label class="field"><span>Pago por / retirado por</span><select id="e_p"><option value="">Caixa da empresa</option>${S.members.map((m2) => `<option value="${esc(m2.email)}" ${e.paid_by === m2.email ? "selected" : ""}>${esc(m2.display_name || who(m2.email))}</option>`).join("")}</select></label>` : ""}</div>
+  <label class="field"><span>Observações</span><input id="e_obs" value="${esc(e.notes || "")}"></label>
+  <div class="modal__foot">${isNew ? "" : `<button type="button" class="btn btn--danger btn--sm spacer" id="eDel">${ico("trash")}Apagar</button>`}<button type="button" class="btn btn--ghost" data-close>Cancelar</button><button class="btn btn--orange">${isNew ? "Lançar" : "Salvar"}</button></div></form>`, (m) => {
+    $("#ef", m).onsubmit = async (ev) => { ev.preventDefault(); const v = $("#e_v", m).value.trim();
+      const row = { company_id: S.cid, kind: K, description: $("#e_desc", m).value.trim() || null, amount: v === "" ? null : num(v), spent_at: $("#e_d", m).value || today(), notes: $("#e_obs", m).value.trim() || null, category: K === "loja" ? "Montagem da loja" : K === "correios" ? "Taxa dos Correios" : $("#e_c", m).value };
+      if (K === "loja") Object.assign(row, { status: $("#e_st", m).value, area: $("#e_area", m).value.trim() || null, supplier: $("#e_sup", m).value.trim() || null });
+      if (K === "correios") Object.assign(row, { status: "Pago", shipment_id: $("#e_ship", m).value || null });
+      if (K === "despesa") Object.assign(row, { paid_by: $("#e_p", m).value || null });
+      try { if (isNew) await q(sb.from("ctl_expenses").insert(row)); else await q(sb.from("ctl_expenses").update(row).eq("id", e.id)); closeModal(); toast(isNew ? "Lançado" : "Salvo"); await refresh(); } catch (err) { fail(err); } };
+    $("#eDel", m) && ($("#eDel", m).onclick = () => confirmBox("Apagar?", `“${esc(e.description || e.category)}” sai do financeiro.`, "Apagar", async () => { await q(sb.from("ctl_expenses").delete().eq("id", e.id)); toast("Apagado"); await refresh(); }));
+  });
+}
+function fixedForm(f) {
+  const isNew = !f; f = f || { name: "", amount: null, start_month: today().slice(0, 8) + "01", active: true };
+  openModal(`<div class="modal__head"><div><h2>${isNew ? "Novo custo fixo" : esc(f.name)}</h2></div><button class="icon-btn" data-close>${ico("x")}</button></div>
+  <form id="ff" class="stack"><div class="grid2"><label class="field"><span>Nome</span><input id="x_n" required value="${esc(f.name)}" placeholder="Ex.: Aluguel"></label><label class="field"><span>Valor por mês (R$)</span><input id="x_v" inputmode="decimal" value="${f.amount == null ? "" : String(f.amount).replace(".", ",")}" placeholder="vazio = aguardando"></label>
+  <label class="field"><span>Começa em</span><input type="month" id="x_s" value="${String(f.start_month).slice(0, 7)}"></label><label class="field"><span>Dia do vencimento</span><input id="x_d" type="number" min="1" max="31" value="${f.due_day || ""}"></label></div>
+  <label class="hstack"><input type="checkbox" id="x_a" ${f.active ? "checked" : ""}> Ativo</label>
+  <div class="modal__foot">${isNew ? "" : `<button type="button" class="btn btn--danger btn--sm spacer" id="xDel">${ico("trash")}Apagar</button>`}<button type="button" class="btn btn--ghost" data-close>Cancelar</button><button class="btn btn--orange">Salvar</button></div></form>`, (m) => {
+    $("#ff", m).onsubmit = async (ev) => { ev.preventDefault(); const v = $("#x_v", m).value.trim(); const row = { company_id: S.cid, name: $("#x_n", m).value.trim(), amount: v === "" ? null : num(v), start_month: ($("#x_s", m).value || today().slice(0, 7)) + "-01", due_day: parseInt($("#x_d", m).value) || null, active: $("#x_a", m).checked };
+      try { if (isNew) await q(sb.from("ctl_fixed_costs").insert(row)); else await q(sb.from("ctl_fixed_costs").update(row).eq("id", f.id)); closeModal(); toast("Salvo"); await refresh(); } catch (err) { fail(err); } };
+    $("#xDel", m) && ($("#xDel", m).onclick = () => confirmBox("Apagar custo fixo?", `“${esc(f.name)}” sai de todos os meses.`, "Apagar", async () => { await q(sb.from("ctl_fixed_costs").delete().eq("id", f.id)); toast("Apagado"); await refresh(); }));
+  });
+}
+function lojaImportModal() {
+  openModal(`<div class="modal__head"><div><h2>Importar planilha da loja</h2><p class="muted">Colunas: Item, Status, Valor (R$), Onde comprou, Ambiente, Observações. Itens que já existem são atualizados, sem duplicar. Linhas de taxa dos Correios vão para a aba Taxa dos Correios.</p></div><button class="icon-btn" data-close>${ico("x")}</button></div>
+  <div class="stack"><label class="field"><span>Arquivo (.xlsx ou .csv)</span><input type="file" id="liF" accept=".xlsx,.xls,.csv"></label><label class="field"><span>Taxas dos Correios vão para o pacote</span><select id="liS">${S.shipments.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("")}<option value="">Nenhum</option></select></label><div id="liPrev"></div></div>
+  <div class="modal__foot"><button class="btn btn--ghost" data-close>Cancelar</button><button class="btn btn--orange" id="liGo" disabled>Importar</button></div>`, (m) => {
+    let rows = [];
+    $("#liF", m).onchange = async (ev) => { const f = ev.target.files[0]; if (!f) return;
+      try { const wb = XLSX.read(await f.arrayBuffer(), { type: "array" }); const ws = wb.Sheets[wb.SheetNames[0]]; const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" });
+        const norm = (x) => String(x).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+        const hi = aoa.findIndex((r) => r.some((c) => /^(item|produto|descricao)/.test(norm(c))) && r.some((c) => /(valor|preco|total)/.test(norm(c))));
+        if (hi < 0) throw new Error("Não achei as colunas. A planilha precisa ter “Item” e “Valor”.");
+        const H = aoa[hi].map(norm); const col = (re) => H.findIndex((h) => re.test(h));
+        const cI = col(/^(item|produto|descricao)/), cS = col(/status|situa/), cV = col(/(valor|preco|total)/), cO = col(/(onde|loja|fornec)/), cA = col(/(ambiente|area|local)/), cN = col(/(obs|nota)/);
+        rows = aoa.slice(hi + 1).filter((r) => String(r[cI] ?? "").trim()).map((r) => { const d = String(r[cI]).trim(); const v = r[cV] === "" || r[cV] == null ? null : num(r[cV]); const isC = /correio/i.test(d) && /(taxa|imposto)/i.test(d); return { d, isC, kind: isC ? "correios" : "loja", amount: v, status: cS >= 0 ? String(r[cS]).trim() || null : null, supplier: cO >= 0 ? String(r[cO]).trim() || null : null, area: cA >= 0 ? String(r[cA]).trim() || null : null, notes: cN >= 0 ? String(r[cN]).trim() || null : null }; });
+        rows.forEach((r) => (r.match = S.expenses.find((e) => e.kind === r.kind && norm(e.description || "") === norm(r.d))));
+        const lj = rows.filter((r) => !r.isC), tc = rows.filter((r) => r.isC);
+        $("#liPrev", m).innerHTML = `<div class="note note--muted">${lj.length} itens da loja (${lj.filter((r) => r.match).length} já existem e serão atualizados) · gasto ${brl(lj.filter((r) => r.amount != null && !PLANNED.includes(r.status)).reduce((a, r) => a + r.amount, 0))}${tc.length ? ` · ${tc.length} taxa(s) dos Correios: ${brl(tc.reduce((a, r) => a + n(r.amount), 0))}` : ""}</div>`;
+        $("#liGo", m).disabled = !rows.length;
+      } catch (err) { $("#liPrev", m).innerHTML = `<div class="note">${esc(friendly(err))}</div>`; $("#liGo", m).disabled = true; } };
+    $("#liGo", m).onclick = async () => { const b = $("#liGo", m); b.disabled = true; b.textContent = "Importando…"; const ship = $("#liS", m).value || null;
+      try { const ins = [];
+        for (const r of rows) { const row = { company_id: S.cid, kind: r.kind, category: r.isC ? "Taxa dos Correios" : "Montagem da loja", description: r.d, amount: r.amount, status: r.status || (r.isC ? "Pago" : null), supplier: r.supplier, area: r.area, notes: r.notes, ...(r.isC ? { shipment_id: ship } : {}) };
+          if (r.match) await q(sb.from("ctl_expenses").update(row).eq("id", r.match.id)); else ins.push({ ...row, spent_at: today() }); }
+        if (ins.length) await q(sb.from("ctl_expenses").insert(ins));
+        closeModal(); toast(`${ins.length} novos · ${rows.length - ins.length} atualizados`); await refresh();
+      } catch (err) { b.disabled = false; b.textContent = "Importar"; fail(err); } };
   });
 }
 
@@ -589,14 +737,17 @@ function importModal() {
 }
 function exportXlsx(kind) {
   const wb = XLSX.utils.book_new();
-  const prod = S.products.map((p) => ({ Código: p.sku, Categoria: p.category, Produto: p.name, Variação: p.variant, "Custo (¥)": n(p.cost_cny), "Custo (R$)": +C.baseCost(p).toFixed(2), "Frete+taxas/un (R$)": +(C.landed(p) - C.baseCost(p)).toFixed(2), "Custo final (R$)": +C.landed(p).toFixed(2), "Venda (R$)": n(p.price), "Lucro/un (R$)": +(n(p.price) - C.landed(p)).toFixed(2), Estoque: C.stock(p.id), "A caminho": C.inTransit(p.id), Lote: S.shipments.find((s) => s.id === p.shipment_id)?.name || "" }));
+  const prod = S.products.map((p) => { const k = C.parts(p); return { Código: p.sku, Categoria: p.category, Produto: p.name, Tamanho: p.variant, "Custo (¥)": n(p.cost_cny), "Produto (R$)": +k.prod.toFixed(2), "Frete (R$)": +k.frete.toFixed(2), "Taxa Correios (R$)": +(k.correios + k.outras).toFixed(2), "Custo final (R$)": +k.total.toFixed(2), Fotos: (p.photos || []).length, "Venda (R$)": n(p.price), "Lucro/un (R$)": +(n(p.price) - C.landed(p)).toFixed(2), Estoque: C.stock(p.id), "A caminho": C.inTransit(p.id), Lote: S.shipments.find((s) => s.id === p.shipment_id)?.name || "" }; });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(prod), "Produtos");
   if (kind !== "produtos") {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(S.sales.map((s) => ({ Nº: s.number, Data: new Date(s.sold_at).toLocaleString("pt-BR"), Cliente: s.customer_name, WhatsApp: s.customer_phone, Canal: s.channel, Pagamento: s.payment_method, Itens: (s.items || []).map((i) => `${i.qty}x ${i.name}`).join("; "), Subtotal: n(s.subtotal), Desconto: n(s.discount), Frete: n(s.shipping_charged), Total: n(s.total), Custo: +C.saleCost(s).toFixed(2), Lucro: +C.saleProfit(s).toFixed(2), Situação: s.status, Vendedor: s.seller_email }))), "Vendas");
     if (kind !== "vendas") {
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(S.moves.map((m) => ({ Data: new Date(m.created_at).toLocaleString("pt-BR"), Produto: S.products.find((p) => p.id === m.product_id)?.name, Tipo: MOVE_T[m.type]?.[0] || m.type, Quantidade: m.qty, "Custo ¥": m.unit_cost_cny, Lote: S.shipments.find((s) => s.id === m.shipment_id)?.name || "", Obs: m.note, Por: m.created_by }))), "Estoque");
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(S.shipments.map((s) => { const k = C.shipInfo(s); return { Pacote: s.name, Plataforma: s.platform, Rastreio: s.tracking_code, Situação: sLabel(s.status), Cotação: k.rate, Peças: k.units, "Produtos (¥)": k.cnyTot, "Produtos (R$)": +k.base.toFixed(2), "Frete (R$)": n(s.freight_brl), "Imposto importação (R$)": n(s.import_tax_brl), "ICMS (R$)": n(s.icms_brl), "Outras taxas (R$)": n(s.other_fees_brl), "Custo total (R$)": +k.total.toFixed(2), "Taxa gerada": s.tax_generated ? "Sim" : "Não", "Taxa paga": s.tax_paid ? "Sim" : "Não", Compra: s.ordered_at, Envio: s.shipped_at, Entrega: s.delivered_at }; })), "Pacotes");
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(S.expenses.map((e) => ({ Data: e.spent_at, Categoria: e.category, Descrição: e.description, Valor: n(e.amount), "Pago por": e.paid_by }))), "Despesas");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(S.shipments.map((s) => { const k = C.shipInfo(s); return { Pacote: s.name, Plataforma: s.platform, Rastreio: s.tracking_code, Situação: sLabel(s.status), Cotação: k.rate, Peças: k.units, "Produtos (¥)": k.cnyTot, "Produtos (R$)": +k.base.toFixed(2), "Frete (R$)": n(s.freight_brl), "Taxa Correios (R$)": +C.shipCorreios(s).toFixed(2), "Outras taxas (R$)": n(s.other_fees_brl), "Custo total (R$)": +k.total.toFixed(2), "Taxa gerada": s.tax_generated ? "Sim" : "Não", "Taxa paga": s.tax_paid ? "Sim" : "Não", Compra: s.ordered_at, Envio: s.shipped_at, Entrega: s.delivered_at }; })), "Pacotes");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(S.expenses.filter((e) => e.kind === "loja").map((e) => ({ Item: e.description, Status: e.status, "Valor (R$)": e.amount, "Onde comprou": e.supplier, Ambiente: e.area, Observações: e.notes }))), "Compras da loja");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(S.expenses.filter((e) => e.kind === "correios").map((e) => ({ Data: e.spent_at, Descrição: e.description, "Valor (R$)": n(e.amount), Pacote: S.shipments.find((s) => s.id === e.shipment_id)?.name || "", Observações: e.notes }))), "Taxa Correios");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(S.fixed.map((f) => ({ Conta: f.name, "Valor/mês (R$)": f.amount, Desde: f.start_month, Vencimento: f.due_day, Ativo: f.active ? "Sim" : "Não" }))), "Custos fixos");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(S.expenses.filter((e) => e.kind !== "loja" && e.kind !== "correios").map((e) => ({ Data: e.spent_at, Categoria: e.category, Descrição: e.description, Valor: n(e.amount), "Pago por": e.paid_by }))), "Outras despesas");
     }
   }
   XLSX.writeFile(wb, `${S.company.name.replace(/\W+/g, "_")}_${kind}_${today()}.xlsx`);
@@ -617,6 +768,9 @@ function bindPage(k) {
     $("#newMove").onclick = () => moveForm();
     $$("[data-mv]").forEach((b) => (b.onclick = () => moveForm(S.products.find((p) => p.id === b.dataset.mv))));
     $$("[data-mf]").forEach((b) => (b.onclick = () => { mFilter = b.dataset.mf; route(); }));
+    $$("#stTabs button").forEach((b) => (b.onclick = () => { stTab = b.dataset.t; store.set("stTab", stTab); route(); }));
+    $$("[data-phf]").forEach((b) => (b.onclick = () => { phFilter = b.dataset.phf; route(); }));
+    $$("[data-phcard]").forEach((card) => { const p = S.products.find((x) => x.id === card.dataset.phcard); const strip = $(".photos", card); bindPhotos(strip, p, () => { const y = scrollY; route(); window.scrollTo({ top: y }); }); });
     $$("[data-delmv]").forEach((b) => (b.onclick = () => confirmBox("Apagar movimentação?", "O saldo do produto será recalculado sem ela.", "Apagar", async () => { await q(sb.from("ctl_stock_moves").delete().eq("id", b.dataset.delmv)); toast("Movimentação apagada"); await refresh(); })));
   }
   if (k === "vendas") {
@@ -631,8 +785,17 @@ function bindPage(k) {
     if (!S.correios) sb.rpc("ctl_correios_status", { p_company: S.cid }).then(({ data }) => { if (data) { S.correios = data; if (!data.configured && location.hash === "#importacoes") route(); } });
   }
   if (k === "financeiro") {
-    $("#newExp").onclick = expenseForm;
-    $$("[data-delexp]").forEach((b) => (b.onclick = () => confirmBox("Apagar despesa?", "Ela sai do financeiro.", "Apagar", async () => { await q(sb.from("ctl_expenses").delete().eq("id", b.dataset.delexp)); toast("Despesa apagada"); await refresh(); })));
+    $$("#finTabs button").forEach((b) => (b.onclick = () => { finTab = b.dataset.t; store.set("finTab", finTab); route(); }));
+    $$("[data-goto]").forEach((b) => (b.onclick = () => { finTab = b.dataset.goto; store.set("finTab", finTab); route(); }));
+    $("#newExp") && ($("#newExp").onclick = () => expenseForm(null, "despesa"));
+    $("#lojaNew") && ($("#lojaNew").onclick = () => expenseForm(null, "loja"));
+    $("#lojaImp") && ($("#lojaImp").onclick = lojaImportModal);
+    $("#tcNew") && ($("#tcNew").onclick = () => expenseForm(null, "correios"));
+    $("#fixNew") && ($("#fixNew").onclick = () => fixedForm());
+    $$("[data-lf]").forEach((b) => (b.onclick = () => { lojaF = b.dataset.lf; route(); }));
+    $$("[data-exp]").forEach((r) => (r.onclick = () => expenseForm(S.expenses.find((e) => e.id === r.dataset.exp))));
+    $$("[data-fixedit]").forEach((b) => (b.onclick = () => fixedForm(S.fixed.find((f) => f.id === b.dataset.fixedit))));
+    $$("[data-fix]").forEach((i) => { i.onkeydown = (e) => { if (e.key === "Enter") i.blur(); }; i.onchange = async () => { const v = i.value.trim(); try { await q(sb.from("ctl_fixed_costs").update({ amount: v === "" ? null : num(v) }).eq("id", i.dataset.fix)); toast("Valor salvo"); i.blur(); await refresh(); } catch (err) { fail(err); } }; });
   }
   if (k === "ajustes") {
     if (!S.correios) sb.rpc("ctl_correios_status", { p_company: S.cid }).then(({ data }) => { if (data) { S.correios = data; route(); } });
@@ -648,7 +811,7 @@ function bindPage(k) {
 
 /* ---------- PWA ---------- */
 if ("serviceWorker" in navigator && location.protocol === "https:") {
-  navigator.serviceWorker.register("sw.js?v=4", { updateViaCache: "none" }).then((r) => r.update()).catch(() => {});
+  navigator.serviceWorker.register("sw.js?v=5", { updateViaCache: "none" }).then((r) => r.update()).catch(() => {});
   let reloaded = false; navigator.serviceWorker.addEventListener("controllerchange", () => { if (!reloaded) { reloaded = true; location.reload(); } });
 }
 addEventListener("online", () => $("#sync")?.classList.remove("off")); addEventListener("offline", () => { $("#sync")?.classList.add("off"); toast("Você está sem internet. As alterações não serão salvas até reconectar.", true); });
