@@ -1,5 +1,5 @@
 // 92 Factory Control — sempre busca a versão mais nova; usa a cópia guardada só sem internet.
-const V = "ctl-v5";
+const V = "ctl-v6";
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== V).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", (e) => {

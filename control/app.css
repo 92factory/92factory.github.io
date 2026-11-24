@@ -316,3 +316,5 @@ table.tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabula
 .phcard__head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .phcard__head b { font-size: 14px; }
 @media (max-width: 560px) { .phgrid { grid-template-columns: minmax(0,1fr); } .photo { width: 76px; height: 76px; } }
+.cell-in--text { width: 150px; text-align: left; }
+.cell-in--size { width: 70px; text-align: center; }
